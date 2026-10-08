@@ -54,6 +54,17 @@ Models are stored **outside** the repository as well (see §5).
   docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
   ```
   It should print the RTX 4050. If it does, the llama.cpp CUDA container can use the GPU.
+- **Result (2026-10-08, task 1.3):** ✅
+  | Check | Result |
+  |---|---|
+  | Docker backend | WSL2 (`docker info` kernel `6.6.87.2-microsoft-standard-WSL2`; `wsl -l -v` shows `docker-desktop` v2) |
+  | Runtimes | `nvidia`, `runc` (default `runc`; `--gpus all` selects the GPU) |
+  | Docker VM resources | 24 CPUs, ~8.2 GB RAM (WSL2 default: half of host RAM) |
+  | GPU in container | `NVIDIA GeForce RTX 4050 Laptop GPU`, 6141 MiB, driver 552.27, **max CUDA 12.4** |
+- **Notes for later tasks:**
+  - Under WSL2, `nvidia-smi` shows **no per-process list**, even when a container uses the GPU. Confirm GPU use by the **Memory-Usage** total (≈ 258 MiB at idle) and the engine's own logs.
+  - A container's CUDA version must be **≤ 12.4** with this driver. If a llama.cpp CUDA image needs newer CUDA, either update the NVIDIA driver (free) or build against CUDA 12.4 (checked in task 1.7).
+  - ~8 GB for the whole Compose stack (models + Postgres + Redis + Grafana + …). If memory gets tight, raise it in `%USERPROFILE%\.wslconfig` (`[wsl2] memory=10GB`).
 
 ### make
 - **What/why:** short, memorable commands (`make up`, `make test`, `make bench`) that work the same on Linux, macOS, WSL, CI and Colab. All five portfolio repos will share this convention.

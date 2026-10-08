@@ -38,7 +38,7 @@ Goal: **a request from the OpenAI SDK travels Client → Relay → llama.cpp →
     - Expected result: `git init`, `.gitignore` (venv, models, `.env`, caches), `.gitattributes` (LF line endings), first commit, remote set to https://github.com/sanskar800/Relay-self-hosted-LLM-gateway-and-inference-benchmark (exists, empty).
     - Files: `.gitignore`, `.gitattributes`
     - Verify: `git log` shows the commit; `git push` succeeds.
-- [ ] `[MUST]` **1.3 Verify make, Docker Desktop + WSL2 and NVIDIA GPU support** (external setup; walk through together)
+- [x] `[MUST]` **1.3 Verify make, Docker Desktop + WSL2 and NVIDIA GPU support** (done 2026-10-08) (external setup; walk through together)
     - Why: `make` targets are the house style; GPU-in-Docker decides whether llama.cpp uses the RTX 4050 (1.7, Day 6).
     - Expected result: `make --version` works in a fresh terminal (winget's `bin` folder is on the user PATH; VS Code must be fully restarted to pick it up); Docker uses the WSL2 backend; `docker run --rm --gpus all nvidia/cuda:… nvidia-smi` prints the RTX 4050.
     - Files: `docs/development.md` (results recorded)
