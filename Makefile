@@ -3,7 +3,7 @@
 
 COMPOSE = docker compose -f deploy/compose/docker-compose.yml
 
-.PHONY: help setup test lint format models models-all up down ps logs run test-contract
+.PHONY: help setup test lint format models models-all up up-gpu down ps logs run test-contract
 
 help:  ## List targets
 	@uv run python -c "import re; [print(f\"{m[0]:<12} {m[1]}\") for m in re.findall(r\"^([a-z-]+):.*## (.*)$$\", open(\"Makefile\").read(), re.M)]"
@@ -34,8 +34,11 @@ models-all:  ## Also download benchmark-only models
 up:  ## Start the local stack and wait until healthy
 	$(COMPOSE) up -d --wait
 
-down:  ## Stop the local stack
-	$(COMPOSE) down
+up-gpu:  ## Also start llama.cpp on the RTX 4050 (:8082)
+	$(COMPOSE) --profile gpu up -d --wait
+
+down:  ## Stop the local stack (including the GPU service)
+	$(COMPOSE) --profile gpu down
 
 ps:  ## Show stack status
 	$(COMPOSE) ps

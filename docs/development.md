@@ -10,7 +10,7 @@ A living setup guide. Each external requirement lists **what it is, why we need 
 | CPU | Intel i7-14650HX, 16 cores / 24 threads | Strong CPU baseline for llama.cpp |
 | RAM | ~16 GB | Limits how many containers and models run at once |
 | GPU | NVIDIA RTX 4050 Laptop, **6 GB** VRAM, compute capability 8.9 (Ada) | ~0.5 GB already used by the desktop |
-| NVIDIA driver | 552.27 (CUDA 12.4) | GPU is visible inside WSL2 |
+| NVIDIA driver | **617.42 (CUDA 13.4)**, updated 2026-10-08 from 552.27 (CUDA 12.4) | Update needed for llama.cpp CUDA images (≥ 12.8) |
 | Docker | Docker Desktop 29.1.3, Compose v2.40.3 | `nvidia` runtime is registered |
 | Python | 3.13.7 (Windows) | We will use a uv-managed 3.12 (see below) |
 | uv | 0.9.9 | ✅ |
@@ -67,7 +67,7 @@ Models are stored **outside** the repository as well (see §5).
 - **llama.cpp CUDA images vs this driver (checked 2026-10-08):** every `server-cuda*-b11459` image (`cuda`, `cuda12`, `cuda13`) declares `NVIDIA_REQUIRE_CUDA=cuda>=12.8` (13.4 for `cuda13`), read without pulling via `docker buildx imagetools inspect <image> --format '{{json .Image}}'`.
   - Default run: `nvidia-container-cli: requirement error: unsatisfied condition: cuda>=12.8, please update your driver to a newer version`.
   - With `-e NVIDIA_DISABLE_REQUIRE=1` (skip the check, relying on CUDA minor-version compatibility): container starts but `ggml_cuda_init: failed to initialize CUDA: no CUDA-capable device is detected`. Not viable.
-  - **Conclusion:** GPU llama.cpp in Docker needs an NVIDIA driver that supports CUDA ≥ 12.8 (driver ≥ 570). Alternatives rejected: building llama.cpp against CUDA 12.4 (long compile, image to maintain); an older llama.cpp build (engine version would differ from the CPU baseline).
+  - **Conclusion:** GPU llama.cpp in Docker needs an NVIDIA driver that supports CUDA ≥ 12.8 (driver ≥ 570). **Resolved 2026-10-08:** driver updated to 617.42 (CUDA 13.4); `nvidia-smi` now labels this "CUDA UMD Version". Alternatives rejected: building llama.cpp against CUDA 12.4 (long compile, image to maintain); an older llama.cpp build (engine version would differ from the CPU baseline).
   - ~8 GB for the whole Compose stack (models + Postgres + Redis + Grafana + …). If memory gets tight, raise it in `%USERPROFILE%\.wslconfig` (`[wsl2] memory=10GB`).
 
 ### make
@@ -134,6 +134,11 @@ make down    # stop
 | Service | Port (host) | Image | Notes |
 |---|---|---|---|
 | `llamacpp` | 8081 | `ghcr.io/ggml-org/llama.cpp:server-b11459` (0.6.0-dev, commit `f498f864f`) | CPU; 2 slots × 4096 ctx; `--metrics`; model via `LLAMACPP_MODEL`, models dir via `RELAY_MODELS_DIR` |
+| `llamacpp-gpu` | 8082 | `ghcr.io/ggml-org/llama.cpp:server-cuda12-b11459` (same build, CUDA) | **Profile `gpu`**: `make up-gpu`. All layers on the RTX 4050 (`--n-gpu-layers 99`); model via `LLAMACPP_GPU_MODEL` |
+
+Both ports are bound to **127.0.0.1**: llama.cpp has no authentication (its log warns `no API key is set and CORS allows all origins`), so it must not be reachable from the network; clients go through Relay.
+
+**Confirming GPU use** (2026-10-08; observations, not benchmarks): VRAM 99 → 1,412 MiB after `make up-gpu` (1.5B Q4_K_M + KV cache); `--list-devices` shows `CUDA0: NVIDIA GeForce RTX 4050 Laptop GPU`; utilisation ~90% during a 200-token generation. llama.cpp's default log level does not print offload details, so use these checks instead.
 
 *(Redis, Postgres, Prometheus, Grafana and Jaeger are added on Days 3–4.)*
 
