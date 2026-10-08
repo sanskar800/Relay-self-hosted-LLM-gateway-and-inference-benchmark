@@ -33,7 +33,7 @@ Goal: **a request from the OpenAI SDK travels Client → Relay → llama.cpp →
     - Expected result: `docs/brief.md` with users, tenants, quotas, the target SLO (labelled *target*, not a result) and what is out of scope.
     - Files: `docs/brief.md`
     - Verify: it fits on one page; every later feature traces back to a line in it.
-- [ ] `[MUST]` **1.2 Initialise git and GitHub**
+- [x] `[MUST]` **1.2 Initialise git and GitHub** (done 2026-10-08, pushed to `main`)
     - Why: version history; CI later; the portfolio lives on GitHub.
     - Expected result: `git init`, `.gitignore` (venv, models, `.env`, caches), `.gitattributes` (LF line endings), first commit, remote set to https://github.com/sanskar800/Relay-self-hosted-LLM-gateway-and-inference-benchmark (exists, empty).
     - Files: `.gitignore`, `.gitattributes`
@@ -361,3 +361,4 @@ Goal: **real measurements on hardware we actually have.** We only compare config
 | Date | Day | Done | Notes / schedule changes |
 |---|---|---|---|
 | 2026-10-08 | 0 | Planning docs | Environment inspected; deviations proposed |
+| 2026-10-08 | 1 | 1.1 brief, 1.2 git + GitHub | Considered dropping `make`; kept it after finding the cause was a stale VS Code PATH (see development.md §10). 1.3 now also checks the WSL2 backend. |
