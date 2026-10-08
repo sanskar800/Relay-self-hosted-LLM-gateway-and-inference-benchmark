@@ -58,7 +58,7 @@ Goal: **a request from the OpenAI SDK travels Client → Relay → llama.cpp →
     - Expected result: `deploy/compose/docker-compose.yml` with a `llamacpp` service on `:8081`, models mounted read-only.
     - Files: `deploy/compose/docker-compose.yml`, `Makefile`
     - Verify: `curl :8081/v1/chat/completions` returns a completion; with `"stream": true` we see `data: {...}` lines ending in `data: [DONE]`.
-- [ ] `[SHOULD]` **1.7 llama.cpp on the RTX 4050 (CUDA image)**
+- [ ] `[SHOULD]` **1.7 llama.cpp on the RTX 4050 (CUDA image)**: **blocked**, all current CUDA images need CUDA ≥ 12.8; installed driver 552.27 supports 12.4 (see development.md §2). Needs an NVIDIA driver update.
     - Why: the realistic local GPU path; needed for Day 6.
     - Expected result: a `llamacpp-gpu` Compose profile with GPU device reservation and `--n-gpu-layers` set.
     - Files: `deploy/compose/docker-compose.yml`
@@ -73,7 +73,7 @@ Goal: **a request from the OpenAI SDK travels Client → Relay → llama.cpp →
     - Expected result: `tests/contract/test_openai_sdk.py` uses `OpenAI(base_url="http://localhost:8000/v1")`.
     - Files: `tests/contract/`
     - Verify: `uv run pytest tests/contract` passes with the stack running.
-- [ ] `[MUST]` **1.10 Update docs and commit**
+- [x] `[MUST]` **1.10 Update docs and commit** (done 2026-10-08; verified from a clean clone)
     - Expected result: quick start in README and development.md actually works from a clean checkout.
     - Verify: follow the README in a fresh terminal.
 
@@ -362,3 +362,4 @@ Goal: **real measurements on hardware we actually have.** We only compare config
 |---|---|---|---|
 | 2026-10-08 | 0 | Planning docs | Environment inspected; deviations proposed |
 | 2026-10-08 | 1 | 1.1 brief, 1.2 git + GitHub | Considered dropping `make`; kept it after finding the cause was a stale VS Code PATH (see development.md §10). 1.3 now also checks the WSL2 backend. |
+| 2026-10-08 | 1 | 1.3–1.6, 1.8–1.10 | **Day 1 checkpoint met:** OpenAI SDK → Relay → llama.cpp (CPU, non-streaming), verified from a clean clone. Relay moved to port 8000 (8080 taken by another project). 1.7 (SHOULD) blocked on NVIDIA driver ≥ 570; image `server-cuda12-b11459` already pulled. |

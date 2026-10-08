@@ -192,3 +192,8 @@ make run    # Relay on http://localhost:8000, auto-reloads on changes in src/
 - **Fix:** fully quit VS Code (all windows) and reopen it. Reloading one window is not enough.
 - **Workaround without restarting** (PowerShell): `$env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')`
 - **Verify:** `make --version` prints `GNU Make 4.4.1`.
+
+### `localhost:<port>` answers with someone else's response (404, nginx page) (2026-10-08)
+- **Cause:** another Docker container publishes the same port on all addresses, including IPv6 (`[::]:8080`). Relay (uvicorn) listens on IPv4 `127.0.0.1` only. Windows lets both bind, and `localhost` may resolve to `::1`, so requests silently reach the other container. Seen here with `media-archiver-nginx` on 8080 and `nthset-scaffold-1-dashboard-1` on 8001.
+- **Check:** `Get-NetTCPConnection -LocalPort 8000 -State Listen` and `docker ps --format "{{.Names}} {{.Ports}}"`.
+- **Fix:** keep Relay on a port nothing else publishes (8000 here), or call `127.0.0.1:<port>` explicitly. In scripts, wait for readiness with `curl -f` (fails on 4xx/5xx) so a foreign server answering 404 is not mistaken for Relay.
