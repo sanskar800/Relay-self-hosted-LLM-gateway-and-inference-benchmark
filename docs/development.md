@@ -64,6 +64,10 @@ Models are stored **outside** the repository as well (see §5).
 - **Notes for later tasks:**
   - Under WSL2, `nvidia-smi` shows **no per-process list**, even when a container uses the GPU. Confirm GPU use by the **Memory-Usage** total (≈ 258 MiB at idle) and the engine's own logs.
   - A container's CUDA version must be **≤ 12.4** with this driver. If a llama.cpp CUDA image needs newer CUDA, either update the NVIDIA driver (free) or build against CUDA 12.4 (checked in task 1.7).
+- **llama.cpp CUDA images vs this driver (checked 2026-10-08):** every `server-cuda*-b11459` image (`cuda`, `cuda12`, `cuda13`) declares `NVIDIA_REQUIRE_CUDA=cuda>=12.8` (13.4 for `cuda13`), read without pulling via `docker buildx imagetools inspect <image> --format '{{json .Image}}'`.
+  - Default run: `nvidia-container-cli: requirement error: unsatisfied condition: cuda>=12.8, please update your driver to a newer version`.
+  - With `-e NVIDIA_DISABLE_REQUIRE=1` (skip the check, relying on CUDA minor-version compatibility): container starts but `ggml_cuda_init: failed to initialize CUDA: no CUDA-capable device is detected`. Not viable.
+  - **Conclusion:** GPU llama.cpp in Docker needs an NVIDIA driver that supports CUDA ≥ 12.8 (driver ≥ 570). Alternatives rejected: building llama.cpp against CUDA 12.4 (long compile, image to maintain); an older llama.cpp build (engine version would differ from the CPU baseline).
   - ~8 GB for the whole Compose stack (models + Postgres + Redis + Grafana + …). If memory gets tight, raise it in `%USERPROFILE%\.wslconfig` (`[wsl2] memory=10GB`).
 
 ### make

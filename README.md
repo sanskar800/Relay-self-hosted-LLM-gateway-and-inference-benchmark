@@ -83,8 +83,8 @@ Only technologies this project actually uses:
 | Phase | Status |
 |---|---|
 | Planning & documentation | ✅ Done |
-| Day 1: foundations, local inference, minimal gateway | ⏳ Next |
-| Day 2: OpenAI-compatible gateway and streaming | ⬜ |
+| Day 1: foundations, local inference, minimal gateway | ✅ Done (GPU backend pending an NVIDIA driver update) |
+| Day 2: OpenAI-compatible gateway and streaming | ⏳ Next |
 | Day 3: multi-tenancy, rate limiting, usage ledger | ⬜ |
 | Day 4: reliability and observability | ⬜ |
 | Day 5: benchmark harness | ⬜ |
@@ -124,21 +124,49 @@ The detailed plan is in [TASKS.md](TASKS.md).
 
 ## Quick start (local development)
 
-> Not runnable yet. This section is filled in as Day 1 lands. The full setup guide is [docs/development.md](docs/development.md).
+What works today: the OpenAI SDK → Relay → llama.cpp (CPU), **non-streaming**, no API keys yet. The full setup guide is [docs/development.md](docs/development.md).
+
+**Prerequisites:** Docker Desktop, [uv](https://docs.astral.sh/uv/), GNU Make, ~2 GB free disk for models. Ports 8000 (Relay) and 8081 (llama.cpp) must be free.
 
 ```bash
-# prerequisites: Docker Desktop, uv, make (see docs/development.md)
-make setup          # install Python deps with uv
-make models         # download the small development GGUF model
-make up             # start llama.cpp, Redis, PostgreSQL, Prometheus, Grafana
-make run            # start Relay on http://localhost:8000
+git clone https://github.com/sanskar800/Relay-self-hosted-LLM-gateway-and-inference-benchmark.git relay
+cd relay
+make setup     # Python 3.12 venv + exact dependencies from uv.lock
+make models    # pinned Qwen2.5 GGUF models (~1.6 GB) to ~/models, SHA-256 verified
+make up        # llama.cpp server on :8081, waits until healthy
+make run       # Relay on http://localhost:8000 (leave running; use a second terminal below)
+```
+
+Call it with the **official OpenAI SDK**, changing only `base_url` (run with `uv run python`):
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="http://localhost:8000/v1", api_key="unused-for-now")
+reply = client.chat.completions.create(
+    model="qwen2.5-1.5b-instruct",
+    messages=[{"role": "user", "content": "In one sentence, what is an API gateway?"}],
+    max_tokens=60,
+)
+print(reply.choices[0].message.content, reply.usage)
+```
+
+Or with `curl` (bash) / PowerShell:
+
+```bash
+curl http://localhost:8000/v1/chat/completions -H "Content-Type: application/json" \
+  -d '{"model": "qwen2.5-1.5b-instruct", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 30}'
+```
+
+```powershell
+$body = '{"model":"qwen2.5-1.5b-instruct","messages":[{"role":"user","content":"Hello"}],"max_tokens":30}'
+Invoke-RestMethod http://localhost:8000/v1/chat/completions -Method Post -ContentType "application/json" -Body $body
 ```
 
 ```bash
-curl http://localhost:8000/v1/chat/completions \
-  -H "Authorization: Bearer $RELAY_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model": "qwen2.5-1.5b-instruct", "messages": [{"role": "user", "content": "Hello"}], "stream": true}'
+make test            # unit tests (no model or Docker needed)
+make test-contract   # OpenAI SDK contract tests against the running stack
+make down            # stop llama.cpp
 ```
 
 ## Repository layout (target)
