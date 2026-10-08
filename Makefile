@@ -3,7 +3,7 @@
 
 COMPOSE = docker compose -f deploy/compose/docker-compose.yml
 
-.PHONY: help setup test lint format models models-all up down ps logs run
+.PHONY: help setup test lint format models models-all up down ps logs run test-contract
 
 help:  ## List targets
 	@uv run python -c "import re; [print(f\"{m[0]:<12} {m[1]}\") for m in re.findall(r\"^([a-z-]+):.*## (.*)$$\", open(\"Makefile\").read(), re.M)]"
@@ -13,6 +13,9 @@ setup:  ## Create .venv and install exact versions from uv.lock
 
 test:  ## Run unit tests (no model or Docker needed)
 	uv run pytest -m "not contract and not integration"
+
+test-contract:  ## OpenAI SDK contract tests (needs `make up` and `make run`)
+	uv run pytest -m contract -v
 
 lint:  ## Lint and check formatting
 	uv run ruff check .

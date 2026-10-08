@@ -164,7 +164,16 @@ make run    # Relay on http://localhost:8000, auto-reloads on changes in src/
 
 ## 8. Testing
 
-*(filled in during Days 2–4)*: unit, contract (OpenAI SDK) and integration (Compose).
+| Suite | Command | Needs | What it proves |
+|---|---|---|---|
+| Unit | `make test` | nothing (fake backend via `httpx.MockTransport`) | Relay's own logic; runs in ~1 s |
+| Contract | `make test-contract` | `make up` + `make run` | The **official OpenAI SDK** works against Relay unchanged |
+| Integration | *(Day 4)* | Compose services | Failure scenarios end to end |
+
+- Contract tests **skip** locally when Relay is unreachable (the message says what to start). Set `RELAY_REQUIRE_STACK=1` (CI does) to make that a failure instead.
+- Overrides: `RELAY_TEST_BASE_URL` (default `http://localhost:8000/v1`), `RELAY_TEST_MODEL` (default `qwen2.5-1.5b-instruct`).
+- The SDK client in tests uses `max_retries=0`: by default the OpenAI SDK retries 5xx and timeouts twice, which would hide and multiply failures.
+- Markers are applied with `pytestmark` in the test module. A `pytest_collection_modifyitems` hook in a sub-folder `conftest.py` sees **all** collected tests, not just that folder's.
 
 ## 9. Benchmarking
 

@@ -68,7 +68,7 @@ Goal: **a request from the OpenAI SDK travels Client → Relay → llama.cpp →
     - Expected result: `GET /healthz`; `POST /v1/chat/completions` forwards the JSON body to llama.cpp with a shared `httpx.AsyncClient` (created in the app lifespan) and returns the response.
     - Files: `src/relay/main.py`, `src/relay/config.py`, `.env.example`
     - Verify: `curl :8000/v1/chat/completions` returns the model's answer.
-- [ ] `[MUST]` **1.9 End-to-end with the official OpenAI SDK**
+- [x] `[MUST]` **1.9 End-to-end with the official OpenAI SDK** (done 2026-10-08)
     - Why: compatibility should be proven, not assumed. This becomes the first contract test.
     - Expected result: `tests/contract/test_openai_sdk.py` uses `OpenAI(base_url="http://localhost:8000/v1")`.
     - Files: `tests/contract/`
