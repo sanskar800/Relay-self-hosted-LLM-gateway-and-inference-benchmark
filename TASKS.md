@@ -48,7 +48,7 @@ Goal: **a request from the OpenAI SDK travels Client → Relay → llama.cpp →
     - Expected result: `pyproject.toml` (FastAPI, httpx, pydantic-settings, uvicorn; dev: pytest, pytest-asyncio, ruff, openai), `.python-version` = 3.12, `uv.lock`, `src/relay/__init__.py`, `tests/`.
     - Files: `pyproject.toml`, `uv.lock`, `.python-version`, `src/relay/`, `tests/`
     - Verify: `uv sync && uv run pytest && uv run ruff check .` all pass.
-- [ ] `[MUST]` **1.5 Write a model download script**
+- [x] `[MUST]` **1.5 Write a model download script** (done 2026-10-08)
     - Why: model choice must be reproducible from the repo, not "I downloaded something once".
     - Expected result: `scripts/download_models.py` fetches pinned GGUF files (0.5B for CI, 1.5B Q4_K_M for dev) to `~/models` via `huggingface_hub`; `make models`.
     - Files: `scripts/download_models.py`, `Makefile`

@@ -37,6 +37,7 @@ markers = [
 
 [dependency-groups]
 dev = [
+    "huggingface-hub>=2.1.1",
     "openai>=3.26.1",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
