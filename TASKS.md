@@ -43,7 +43,7 @@ Goal: **a request from the OpenAI SDK travels Client → Relay → llama.cpp →
     - Expected result: `make --version` works in a fresh terminal (winget's `bin` folder is on the user PATH; VS Code must be fully restarted to pick it up); Docker uses the WSL2 backend; `docker run --rm --gpus all nvidia/cuda:… nvidia-smi` prints the RTX 4050.
     - Files: `docs/development.md` (results recorded)
     - Verify: both commands' output.
-- [ ] `[MUST]` **1.4 Set up the Python project with uv**
+- [x] `[MUST]` **1.4 Set up the Python project with uv** (done 2026-10-08)
     - Why: reproducible environment (lock file), src layout, linting and tests from the start.
     - Expected result: `pyproject.toml` (FastAPI, httpx, pydantic-settings, uvicorn; dev: pytest, pytest-asyncio, ruff, openai), `.python-version` = 3.12, `uv.lock`, `src/relay/__init__.py`, `tests/`.
     - Files: `pyproject.toml`, `uv.lock`, `.python-version`, `src/relay/`, `tests/`

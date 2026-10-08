@@ -1,0 +1,44 @@
+[project]
+name = "relay"
+version = "0.1.0"
+description = "Self-hosted, OpenAI-compatible LLM gateway and inference benchmark"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.142.4",
+    "httpx>=0.28.1",
+    "pydantic-settings>=2.15.0",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.9,<0.10"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# E/W pycodestyle, F pyflakes, I import order, B bugbear, UP pyupgrade,
+# ASYNC async pitfalls (e.g. blocking calls inside async code), SIM simplifications
+select = ["E", "W", "F", "I", "B", "UP", "ASYNC", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-ra --strict-markers"
+markers = [
+    "contract: needs the running stack (Relay + backend); exercised with the OpenAI SDK",
+    "integration: needs Docker Compose services",
+]
+
+[dependency-groups]
+dev = [
+    "openai>=3.26.1",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.16.10",
+]

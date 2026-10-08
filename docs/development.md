@@ -78,13 +78,18 @@ Models are stored **outside** the repository as well (see §5).
 
 ## 3. Python project
 
-*(filled in during Day 1)*
-
 ```bash
-uv sync                 # create .venv and install deps from uv.lock
-uv run pytest           # run tests
-uv run ruff check .     # lint
+uv sync                    # create .venv (Python 3.12) and install exact versions from uv.lock
+uv run pytest              # run tests (unit tests need no model or Docker)
+uv run ruff check .        # lint
+uv run ruff format .       # format (CI runs `ruff format --check .`)
 ```
+
+- **Layout:** code in `src/relay/` (src layout, so tests import the *installed* package, not the source folder); tests in `tests/{unit,contract,integration}/`.
+- **Dependencies:** runtime = FastAPI, httpx, pydantic-settings, uvicorn. Dev only = pytest, pytest-asyncio, ruff, **openai** (the SDK is used only by contract tests as a client; Relay never imports it).
+- **Adding a dependency:** `uv add <pkg>` (or `uv add --dev <pkg>`). This updates `pyproject.toml` and `uv.lock`; commit both.
+- **Test markers:** `contract` (needs running stack), `integration` (needs Compose services). Run a subset with `uv run pytest -m "not contract and not integration"`.
+- **Verified 2026-10-08:** Python 3.12.12, 1 test passed, ruff clean.
 
 ## 4. Environment variables
 
