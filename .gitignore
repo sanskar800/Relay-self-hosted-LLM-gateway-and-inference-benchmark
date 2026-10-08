@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Secrets and local config (commit .env.example instead)
+.env
+.env.*
+!.env.example
+
+# Model weights: stored outside the repo (~/models); never commit
+*.gguf
+*.safetensors
+*.bin
+models/
+
+# Benchmark scratch output (final runs under results/ ARE committed)
+results/_scratch/
+*.tmp
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

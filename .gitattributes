@@ -1,0 +1,16 @@
+# Store and check out all text files with LF, on every OS.
+# Overrides a global core.autocrlf=true, so Docker containers, CI and Colab
+# never see CRLF (which breaks shell scripts: "/bin/sh^M: not found").
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# Binary files: never diff or convert
+*.parquet binary
+*.png     binary
+*.jpg     binary
+*.pdf     binary
+*.gguf    binary
