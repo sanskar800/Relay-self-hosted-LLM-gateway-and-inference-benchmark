@@ -63,14 +63,14 @@ Goal: **a request from the OpenAI SDK travels Client → Relay → llama.cpp →
     - Expected result: a `llamacpp-gpu` Compose profile with GPU device reservation and `--n-gpu-layers` set.
     - Files: `deploy/compose/docker-compose.yml`
     - Verify: `nvidia-smi` shows the container using VRAM; server logs show layers offloaded to CUDA. (Only an observation, **not** a benchmark number.)
-- [ ] `[MUST]` **1.8 Minimal Relay: FastAPI app with non-streaming proxy**
+- [x] `[MUST]` **1.8 Minimal Relay: FastAPI app with non-streaming proxy** (done 2026-10-08)
     - Why: the smallest possible gateway, so every later feature has something to attach to.
     - Expected result: `GET /healthz`; `POST /v1/chat/completions` forwards the JSON body to llama.cpp with a shared `httpx.AsyncClient` (created in the app lifespan) and returns the response.
     - Files: `src/relay/main.py`, `src/relay/config.py`, `.env.example`
-    - Verify: `curl :8080/v1/chat/completions` returns the model's answer.
+    - Verify: `curl :8000/v1/chat/completions` returns the model's answer.
 - [ ] `[MUST]` **1.9 End-to-end with the official OpenAI SDK**
     - Why: compatibility should be proven, not assumed. This becomes the first contract test.
-    - Expected result: `tests/contract/test_openai_sdk.py` uses `OpenAI(base_url="http://localhost:8080/v1")`.
+    - Expected result: `tests/contract/test_openai_sdk.py` uses `OpenAI(base_url="http://localhost:8000/v1")`.
     - Files: `tests/contract/`
     - Verify: `uv run pytest tests/contract` passes with the stack running.
 - [ ] `[MUST]` **1.10 Update docs and commit**
@@ -217,7 +217,7 @@ Goal: **Relay survives backend failure and you can see what it is doing.**
     - Why: latency percentiles and per-tenant usage are the product.
     - Expected result: `/metrics` with request count by status/backend, TTFT and ITL histograms, output tokens, gateway overhead histogram, in-flight per backend, breaker state gauge, tokens and £ per tenant, ledger drops.
     - Files: `src/relay/telemetry/metrics.py`
-    - Verify: `curl :8080/metrics` after traffic.
+    - Verify: `curl :8000/metrics` after traffic.
 - [ ] `[MUST]` **4.8 Prometheus + Grafana in Compose with a provisioned dashboard**
     - Expected result: dashboard JSON committed: traffic, errors, TTFT/ITL p50/p95/p99, tokens/s, per-tenant usage, breaker state.
     - Files: `monitoring/prometheus.yml`, `monitoring/grafana/`

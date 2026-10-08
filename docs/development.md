@@ -153,7 +153,14 @@ curl -s localhost:8081/v1/chat/completions -H "Content-Type: application/json" \
 
 ## 7. Running Relay
 
-*(filled in during Day 1)*
+```bash
+make up     # backend first (llama.cpp on :8081)
+make run    # Relay on http://localhost:8000, auto-reloads on changes in src/
+```
+
+- **Port 8000**, not 8080: on this machine another project's nginx container already publishes 8080. Docker and uvicorn can both bind it on Windows without an error, and `localhost:8080` then silently reaches nginx. Check with `Get-NetTCPConnection -LocalPort 8000 -State Listen` before blaming Relay.
+- Settings come from `RELAY_*` environment variables or `.env` (template: `.env.example`): `RELAY_BACKEND_URL` (default `http://localhost:8081`), `RELAY_CONNECT_TIMEOUT_S` (5), `RELAY_REQUEST_TIMEOUT_S` (120).
+- Endpoints so far: `GET /healthz` (liveness) and `POST /v1/chat/completions` (non-streaming; `stream: true` returns 501 until streaming lands). Backend down → 502, timeout → 504, both in OpenAI error format.
 
 ## 8. Testing
 

@@ -131,11 +131,11 @@ The detailed plan is in [TASKS.md](TASKS.md).
 make setup          # install Python deps with uv
 make models         # download the small development GGUF model
 make up             # start llama.cpp, Redis, PostgreSQL, Prometheus, Grafana
-make run            # start Relay on http://localhost:8080
+make run            # start Relay on http://localhost:8000
 ```
 
 ```bash
-curl http://localhost:8080/v1/chat/completions \
+curl http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer $RELAY_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"model": "qwen2.5-1.5b-instruct", "messages": [{"role": "user", "content": "Hello"}], "stream": true}'
