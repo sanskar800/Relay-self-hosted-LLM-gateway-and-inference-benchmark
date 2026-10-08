@@ -53,7 +53,7 @@ Goal: **a request from the OpenAI SDK travels Client → Relay → llama.cpp →
     - Expected result: `scripts/download_models.py` fetches pinned GGUF files (0.5B for CI, 1.5B Q4_K_M for dev) to `~/models` via `huggingface_hub`; `make models`.
     - Files: `scripts/download_models.py`, `Makefile`
     - Verify: files exist with the expected size; licence (Apache-2.0) is noted in development.md.
-- [ ] `[MUST]` **1.6 Run llama.cpp server in Docker Compose (CPU first)**
+- [x] `[MUST]` **1.6 Run llama.cpp server in Docker Compose (CPU first)** (done 2026-10-08)
     - Why: Relay needs a backend. Learn the OpenAI chat-completions request/response format and SSE stream format directly from the engine.
     - Expected result: `deploy/compose/docker-compose.yml` with a `llamacpp` service on `:8081`, models mounted read-only.
     - Files: `deploy/compose/docker-compose.yml`, `Makefile`

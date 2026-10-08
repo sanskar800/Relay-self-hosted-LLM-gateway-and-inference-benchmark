@@ -120,7 +120,36 @@ uv run ruff format .       # format (CI runs `ruff format --check .`)
 
 ## 6. Local stack
 
-*(filled in during Days 1–4)*: `make up`, `make down`, service ports, and how to open Grafana, Prometheus and Jaeger.
+```bash
+make up      # docker compose -f deploy/compose/docker-compose.yml up -d --wait  (returns once healthy)
+make ps      # status
+make logs    # follow logs
+make down    # stop
+```
+
+| Service | Port (host) | Image | Notes |
+|---|---|---|---|
+| `llamacpp` | 8081 | `ghcr.io/ggml-org/llama.cpp:server-b11459` (0.6.0-dev, commit `f498f864f`) | CPU; 2 slots × 4096 ctx; `--metrics`; model via `LLAMACPP_MODEL`, models dir via `RELAY_MODELS_DIR` |
+
+*(Redis, Postgres, Prometheus, Grafana and Jaeger are added on Days 3–4.)*
+
+**Finding llama.cpp image tags:** the registry lists 12,000+ tags oldest-first in pages of 1000; GitHub release names (`v0.6.0`) differ from image tags (`server-bNNNNN`). Variants include `server-cuda12` and `server-cuda13`.
+
+### OpenAI wire format, as observed from llama.cpp (2026-10-08)
+
+```bash
+curl -s localhost:8081/v1/chat/completions -H "Content-Type: application/json" \
+  -d '{"model":"qwen2.5-1.5b-instruct","messages":[{"role":"user","content":"Hi"}],"max_tokens":30}'
+```
+
+- **Non-streaming:** one `chat.completion` object: `choices[0].message.content`, `finish_reason`, `usage {prompt_tokens, completion_tokens, total_tokens}`. Prompt tokens include the chat template (a 9-word question cost 39 tokens).
+- **Streaming** (`"stream": true`): Server-Sent Events. Each event is `data: <json>\n\n` (LF only), ending with `data: [DONE]`.
+  1. First chunk: `delta: {"role": "assistant", "content": null}`, with **no text**. TTFT must be measured to the first chunk *with content*.
+  2. Content chunks: `delta: {"content": "…"}`.
+  3. Final chunk: `delta: {}`, `finish_reason: "stop"`.
+  4. With `stream_options: {"include_usage": true}`: an extra chunk with **`choices: []`** and `usage`, before `[DONE]`. Clients that index `choices[0]` on every chunk would break on it; Relay forwards it and reads usage from it.
+- **Engine extras:** `timings`, `system_fingerprint`, `prompt_tokens_details.cached_tokens` (prefix cache hits). Relay passes unknown fields through.
+- Server logs show `n_threads = 12` on CPU by default.
 
 ## 7. Running Relay
 

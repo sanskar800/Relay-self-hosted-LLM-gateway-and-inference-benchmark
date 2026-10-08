@@ -1,0 +1,38 @@
+# Local Relay stack. Run from the repo root:
+#   docker compose -f deploy/compose/docker-compose.yml up -d     (or: make up)
+name: relay
+
+services:
+  # llama.cpp OpenAI-compatible server on CPU. Also the fallback backend later.
+  llamacpp:
+    # Pinned build (version 0.6.0-dev, build 11459, commit f498f864f); engine version affects benchmarks.
+    image: ghcr.io/ggml-org/llama.cpp:server-b11459
+    ports:
+      - "8081:8080"
+    volumes:
+      # Models live outside the repo (scripts/download_models.py); mounted read-only.
+      - ${RELAY_MODELS_DIR:-~/models}:/models:ro
+    command:
+      - --model
+      - /models/${LLAMACPP_MODEL:-qwen2.5-1.5b-instruct-q4_k_m.gguf}
+      # Name reported in responses and /v1/models; Relay's public model name maps to it.
+      - --alias
+      - ${LLAMACPP_ALIAS:-qwen2.5-1.5b-instruct}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      # Total context shared by parallel slots: 2 slots x 4096 tokens each.
+      - --ctx-size
+      - "8192"
+      - --parallel
+      - "2"
+      # Prometheus-format engine metrics on /metrics (queue depth, tokens/s).
+      - --metrics
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
