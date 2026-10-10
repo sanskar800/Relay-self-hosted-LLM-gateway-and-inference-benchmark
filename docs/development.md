@@ -199,10 +199,13 @@ Start `.venv/Scripts/uvicorn.exe` directly, not via `uv run`: killing the `uv ru
 
 | Suite | Command | Needs | What it proves |
 |---|---|---|---|
-| Unit | `make test` | nothing (fake backend via `httpx.MockTransport`) | Relay's own logic; runs in ~1 s |
+| Unit | `make test` | nothing: in-memory fakes | Relay's own logic, including real SDK → Relay → real HTTP backend → fake engine; ~2 s |
 | Contract | `make test-contract` | `make up` + `make run` | The **official OpenAI SDK** works against Relay unchanged |
 | Integration | *(Day 4)* | Compose services | Failure scenarios end to end |
 
+- **Test doubles, two levels:** `tests/unit/fakes.py` has `FakeBackend`/`FakeStream` (the `Backend` protocol in memory: gateway logic with no HTTP). `tests/fake_engine.py` has `FakeEngine`, a scripted OpenAI-compatible server used as the httpx transport under the real backend; it mimics llama.cpp's stream (role chunk, token chunks, finish chunk, usage chunk **only when `include_usage` is requested**, `[DONE]`) and records the requests it receives.
+- **The OpenAI SDK runs in-process** in unit tests by passing the `TestClient` as `http_client` (`tests/unit/test_errors.py`, `test_end_to_end.py`), so exception classes and parsing are the SDK's own.
+- **Check that a test can fail:** e.g. disabling the `include_usage` injection in `chat.py` makes exactly `test_stream_without_include_usage_still_accounts_exactly` fail (checked 2026-10-10).
 - Contract tests **skip** locally when Relay is unreachable (the message says what to start). Set `RELAY_REQUIRE_STACK=1` (CI does) to make that a failure instead.
 - Overrides: `RELAY_TEST_BASE_URL` (default `http://localhost:8000/v1`), `RELAY_TEST_MODEL` (default `qwen2.5-1.5b-instruct`).
 - The SDK client in tests uses `max_retries=0`: by default the OpenAI SDK retries 5xx and timeouts twice, which would hide and multiply failures.

@@ -119,7 +119,7 @@ Goal: **a correct streaming, OpenAI-compatible gateway with a backend abstractio
     - Expected result: usage read from the response; for streams, request `stream_options.include_usage` from the backend, with a documented fallback if the engine does not support it.
     - Files: `src/relay/accounting/usage.py`
     - Verify: tests assert the token counts match the engine's report.
-- [ ] `[MUST]` **2.8 Unit tests with a fake backend** (no model needed)
+- [x] `[MUST]` **2.8 Unit tests with a fake backend** (no model needed) (done 2026-10-10; 103 unit tests in ~2 s)
     - Why: fast, deterministic tests that do not need a running model.
     - Expected result: a fake OpenAI-compatible server (respx or an in-process ASGI app) that streams scripted chunks.
     - Files: `tests/unit/`, `tests/conftest.py`
