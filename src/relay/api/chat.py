@@ -14,7 +14,7 @@ from relay.accounting.usage import (
     request_stream_usage,
     usage_from_completion,
 )
-from relay.api.errors import model_not_found, openai_error
+from relay.api.errors import backend_error_response, model_not_found, openai_error
 from relay.api.schemas import ChatCompletionRequest, ErrorResponse
 from relay.backends.base import (
     Backend,
@@ -65,8 +65,8 @@ async def chat_completions(payload: ChatCompletionRequest, request: Request) -> 
             record(result.status_code, usage_from_completion(result.content))
             return Response(result.content, result.status_code, media_type=result.content_type)
     except BackendHTTPError as exc:
-        # The backend refused the request (e.g. 400): pass its error through unchanged.
-        return Response(exc.content, exc.status_code, media_type=exc.content_type)
+        # The backend refused the request (e.g. 400): pass its error through.
+        return backend_error_response(exc)
     except BackendTimeout:
         return openai_error(504, "Backend timed out.", "backend_timeout")
     except BackendUnavailable:

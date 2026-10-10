@@ -109,7 +109,7 @@ Goal: **a correct streaming, OpenAI-compatible gateway with a backend abstractio
     - Why: SDKs and tools call it; part of API compatibility.
     - Files: `src/relay/api/models.py`
     - Verify: `client.models.list()` in the contract tests.
-- [ ] `[MUST]` **2.6 Error handling in OpenAI format**
+- [x] `[MUST]` **2.6 Error handling in OpenAI format** (done 2026-10-10)
     - Why: clients parse `{"error": {...}}`; an upstream 500 should not leak as an HTML page.
     - Expected result: exception handlers; upstream errors mapped (502/503/504); a mid-stream failure emits an SSE error event and closes cleanly.
     - Files: `src/relay/api/errors.py`
