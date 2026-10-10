@@ -15,6 +15,11 @@ backends:
     engine: llamacpp
     url: http://127.0.0.1:8082
 
+limits:
+  max_body_bytes: 1048576   # 1 MB; larger bodies get 413 without being read into memory
+  max_messages: 256
+  max_tokens: 4096          # ceiling when the client sends max_tokens / max_completion_tokens
+
 models:
   qwen2.5-1.5b-instruct:
     # CPU first while there is no fallback: the GPU service is not always running.

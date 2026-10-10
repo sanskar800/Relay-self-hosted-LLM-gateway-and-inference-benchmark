@@ -177,6 +177,16 @@ make run    # Relay on http://localhost:8000, auto-reloads on changes in src/
 - **Validated at startup; unknown keys are rejected.** A typo stops Relay with a clear error, e.g. `model 'qwen2.5-1.5b-instruct' refers to undefined backends: ['llamacpp-cpuu']` (exit code 1).
 - Each backend must serve the model under its **public** name (llama.cpp `--alias`, vLLM `--served-model-name`), so Relay never has to rewrite `model`.
 
+### Request limits (`limits:` in `config/relay.yaml`)
+| Limit | Default | Response |
+|---|---|---|
+| `max_body_bytes` | 1 MB (requirements brief) | 413 |
+| `max_messages` | 256 | 400, `param: messages` |
+| `max_tokens` (ceiling for `max_tokens` / `max_completion_tokens`) | 4096 | 400, `param` = the field |
+
+- The body limit is an ASGI middleware enforced **while the body is received**. If `Content-Length` is too big, Relay answers 413 before reading anything (curl with `Expect: 100-continue` then uploads 0 bytes). Without `Content-Length` (chunked) it counts bytes and stops once past the limit. A check inside the endpoint would be too late, because FastAPI reads the whole body first.
+- **Known gap:** the token ceiling applies when the client sends `max_tokens`. If it is omitted, the backend's context window bounds generation (4096 per llama.cpp slot). Whether to inject a default cap is a per-tenant policy decision (Day 3).
+
 ### Token usage (accounting input)
 - Every completed request produces a `UsageRecord` (model, backend, stream, status, prompt/completion tokens, `source`). Today it is logged as `INFO: relay.usage …`; the usage ledger replaces this sink later.
 - **Non-streaming:** read from the response's `usage`.

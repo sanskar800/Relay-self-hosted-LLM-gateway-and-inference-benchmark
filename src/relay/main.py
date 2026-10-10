@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from relay.accounting.usage import UsageRecord
 from relay.api import chat, models
 from relay.api.errors import install_error_handlers
+from relay.api.limits import BodySizeLimitMiddleware
 from relay.backends import ENGINES, Backend
 from relay.config import RelayConfig, Settings, load_config
 
@@ -86,6 +87,7 @@ def create_app(
 
     app = FastAPI(title="Relay", lifespan=lifespan)
     install_error_handlers(app)
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=config.limits.max_body_bytes)
     app.include_router(chat.router)
     app.include_router(models.router)
 

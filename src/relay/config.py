@@ -46,9 +46,20 @@ class ModelConfig(_Strict):
     owned_by: str = "relay"
 
 
+class LimitsConfig(_Strict):
+    """Global request limits. Per-tenant caps can only be stricter than these."""
+
+    max_body_bytes: int = Field(default=1_048_576, gt=0)  # 1 MB (requirements brief)
+    max_messages: int = Field(default=256, gt=0)
+    # Ceiling for max_tokens / max_completion_tokens when the client sends them. If the
+    # client omits them, the backend's context window bounds generation instead.
+    max_tokens: int = Field(default=4096, gt=0)
+
+
 class RelayConfig(_Strict):
     backends: dict[str, BackendConfig] = Field(min_length=1)
     models: dict[str, ModelConfig] = Field(min_length=1)
+    limits: LimitsConfig = LimitsConfig()
 
     @model_validator(mode="after")
     def _references_exist(self) -> Self:

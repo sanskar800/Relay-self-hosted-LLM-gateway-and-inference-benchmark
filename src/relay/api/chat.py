@@ -15,6 +15,7 @@ from relay.accounting.usage import (
     usage_from_completion,
 )
 from relay.api.errors import backend_error_response, model_not_found, openai_error
+from relay.api.limits import check_request_limits
 from relay.api.schemas import ChatCompletionRequest, ErrorResponse
 from relay.backends.base import (
     Backend,
@@ -36,12 +37,14 @@ SSE_HEADERS = {
 
 @router.post(
     "/v1/chat/completions",
-    responses={status: {"model": ErrorResponse} for status in (400, 404, 502, 504)},
+    responses={status: {"model": ErrorResponse} for status in (400, 404, 413, 502, 504)},
 )
 async def chat_completions(payload: ChatCompletionRequest, request: Request) -> Response:
     # `payload` is validated (invalid -> 400 via the error handler). The backend receives
     # the client's ORIGINAL bytes, except that streams may get include_usage added.
     body = await request.body()
+    if limit_error := check_request_limits(payload, request.app.state.config.limits):
+        return limit_error
     route = request.app.state.config.models.get(payload.model)
     if route is None:
         return model_not_found(payload.model)

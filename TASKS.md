@@ -124,7 +124,7 @@ Goal: **a correct streaming, OpenAI-compatible gateway with a backend abstractio
     - Expected result: a fake OpenAI-compatible server (respx or an in-process ASGI app) that streams scripted chunks.
     - Files: `tests/unit/`, `tests/conftest.py`
     - Verify: `uv run pytest tests/unit` runs in under 5 s.
-- [ ] `[SHOULD]` **2.9 Request size and parameter limits** (body bytes, `max_tokens` ceiling, message count)
+- [x] `[MUST]` **2.9 Request size and parameter limits** (body bytes, `max_tokens` ceiling, message count) (done 2026-10-10; retagged SHOULD → MUST because the spec's security list and the brief's FR3 require request size limits)
     - Files: `src/relay/api/limits.py`
     - Verify: oversized request gets 413/400.
 - [ ] `[MUST]` **2.10 Colab feasibility check (≈20 min, de-risking only, no benchmarking)**
