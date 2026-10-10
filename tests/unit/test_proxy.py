@@ -7,6 +7,8 @@ from fastapi.testclient import TestClient
 from relay.config import Settings
 from relay.main import create_app
 
+VALID = {"model": "m", "messages": [{"role": "user", "content": "hi"}]}
+
 COMPLETION = {
     "id": "chatcmpl-1",
     "object": "chat.completion",
@@ -45,7 +47,7 @@ def test_forwards_body_unchanged_and_returns_backend_response() -> None:
 
 def test_backend_error_status_is_passed_through() -> None:
     with make_client(lambda r: httpx.Response(400, json={"error": {"message": "bad"}})) as client:
-        resp = client.post("/v1/chat/completions", json={"model": "m", "messages": []})
+        resp = client.post("/v1/chat/completions", json=VALID)
     assert resp.status_code == 400
     assert resp.json()["error"]["message"] == "bad"
 
@@ -59,7 +61,7 @@ def test_backend_failure_becomes_openai_error(exc: Exception, status: int) -> No
         raise exc
 
     with make_client(backend) as client:
-        resp = client.post("/v1/chat/completions", json={"model": "m", "messages": []})
+        resp = client.post("/v1/chat/completions", json=VALID)
     assert resp.status_code == status
     assert set(resp.json()["error"]) == {"message", "type", "param", "code"}
 
@@ -81,7 +83,5 @@ def test_streaming_is_rejected_until_implemented() -> None:
         raise AssertionError("backend must not be called")
 
     with make_client(backend) as client:
-        resp = client.post(
-            "/v1/chat/completions", json={"model": "m", "messages": [], "stream": True}
-        )
+        resp = client.post("/v1/chat/completions", json={**VALID, "stream": True})
     assert resp.status_code == 501

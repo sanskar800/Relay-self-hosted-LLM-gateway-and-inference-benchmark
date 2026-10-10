@@ -1,22 +1,16 @@
 """Relay gateway: FastAPI app that proxies OpenAI-compatible requests to a backend."""
 
-import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import JSONResponse
 
+from relay.api.errors import install_error_handlers, openai_error
+from relay.api.schemas import ChatCompletionRequest, ErrorResponse
 from relay.config import Settings
 
-
-def openai_error(status_code: int, message: str, error_type: str) -> JSONResponse:
-    """Error body in the shape OpenAI clients parse: {"error": {...}}."""
-    return JSONResponse(
-        status_code=status_code,
-        content={"error": {"message": message, "type": error_type, "param": None, "code": None}},
-    )
+ERROR_RESPONSES = {status: {"model": ErrorResponse} for status in (400, 501, 502, 504)}
 
 
 def create_app(
@@ -37,22 +31,19 @@ def create_app(
             yield
 
     app = FastAPI(title="Relay", lifespan=lifespan)
+    install_error_handlers(app)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
         """Liveness: the process is up. Says nothing about backends (that is /readyz, Day 4)."""
         return {"status": "ok"}
 
-    @app.post("/v1/chat/completions")
-    async def chat_completions(request: Request) -> Response:
+    @app.post("/v1/chat/completions", responses=ERROR_RESPONSES)
+    async def chat_completions(payload: ChatCompletionRequest, request: Request) -> Response:
+        # `payload` is validated (invalid -> 400 via the error handler); the backend still
+        # receives the ORIGINAL bytes, so unknown fields and formatting are untouched.
         body = await request.body()
-        try:
-            payload = json.loads(body)
-        except ValueError:
-            return openai_error(400, "Request body must be valid JSON.", "invalid_request_error")
-        if not isinstance(payload, dict):
-            return openai_error(400, "Request body must be a JSON object.", "invalid_request_error")
-        if payload.get("stream") is True:
+        if payload.stream:
             # Streaming needs chunk-by-chunk forwarding (Day 2); buffering it would be wrong.
             return openai_error(501, "Streaming is not supported yet.", "not_implemented")
 

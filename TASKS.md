@@ -85,7 +85,7 @@ Goal: **a request from the OpenAI SDK travels Client → Relay → llama.cpp →
 
 Goal: **a correct streaming, OpenAI-compatible gateway with a backend abstraction.**
 
-- [ ] `[MUST]` **2.1 OpenAI request/response schemas (Pydantic)**
+- [x] `[MUST]` **2.1 OpenAI request/response schemas (Pydantic)** (done 2026-10-10)
     - Why: validate input at the edge; reject bad requests before they reach a GPU.
     - Expected result: models for `ChatCompletionRequest` (the subset we support, with unknown fields passed through), responses and error objects.
     - Files: `src/relay/api/schemas.py`
