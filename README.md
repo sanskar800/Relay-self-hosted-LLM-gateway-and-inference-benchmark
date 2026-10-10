@@ -84,8 +84,8 @@ Only technologies this project actually uses:
 |---|---|
 | Planning & documentation | ✅ Done |
 | Day 1: foundations, local inference, minimal gateway | ✅ Done (GPU backend pending an NVIDIA driver update) |
-| Day 2: OpenAI-compatible gateway and streaming | ⏳ Next |
-| Day 3: multi-tenancy, rate limiting, usage ledger | ⬜ |
+| Day 2: OpenAI-compatible gateway and streaming | ✅ Done |
+| Day 3: multi-tenancy, rate limiting, usage ledger | ⏳ Next |
 | Day 4: reliability and observability | ⬜ |
 | Day 5: benchmark harness | ⬜ |
 | Day 6: GPU benchmark (local RTX 4050 + free Colab GPU) | ⬜ |
@@ -124,7 +124,7 @@ The detailed plan is in [TASKS.md](TASKS.md).
 
 ## Quick start (local development)
 
-What works today: the OpenAI SDK → Relay → llama.cpp (CPU), **non-streaming**, no API keys yet. The full setup guide is [docs/development.md](docs/development.md).
+What works today: the OpenAI SDK → Relay → llama.cpp, **streaming and non-streaming**, `/v1/models`, OpenAI-format errors and request limits. No API keys yet. The full setup guide is [docs/development.md](docs/development.md).
 
 **Prerequisites:** Docker Desktop, [uv](https://docs.astral.sh/uv/), GNU Make, ~2 GB free disk for models. Ports 8000 (Relay) and 8081 (llama.cpp) must be free.
 

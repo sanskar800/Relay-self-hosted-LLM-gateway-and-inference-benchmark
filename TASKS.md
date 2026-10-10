@@ -127,7 +127,7 @@ Goal: **a correct streaming, OpenAI-compatible gateway with a backend abstractio
 - [x] `[MUST]` **2.9 Request size and parameter limits** (body bytes, `max_tokens` ceiling, message count) (done 2026-10-10; retagged SHOULD → MUST because the spec's security list and the brief's FR3 require request size limits)
     - Files: `src/relay/api/limits.py`
     - Verify: oversized request gets 413/400.
-- [ ] `[MUST]` **2.10 Colab feasibility check (≈20 min, de-risking only, no benchmarking)**
+- [x] `[MUST]` **2.10 Colab feasibility check (≈20 min, de-risking only, no benchmarking)** (done 2026-10-10: T4, vLLM 0.31.0 works with `--dtype half`; see development.md §9)
     - Why: the benchmark depends on a free Colab GPU running vLLM. Finding out on Day 6 that it doesn't work would leave no time to fix it.
     - Expected result: in a scratch Colab notebook, the runtime shows a GPU (`nvidia-smi`); `pip install vllm` succeeds; `vllm serve Qwen/Qwen2.5-1.5B-Instruct` answers one curl request. Record the GPU model, vLLM version and any workarounds in development.md.
     - Files: `docs/development.md`
@@ -305,6 +305,7 @@ Goal: **real measurements on hardware we actually have.** We only compare config
     - Expected result: results folders for each local config across several arrival rates.
     - Verify: the Parquet row count matches requests sent; error rate recorded.
 - [ ] `[MUST]` **6.3 Colab notebook**
+    - Known from the 2.10 check: start vLLM with `--dtype half --port 8001` (T4 has no bfloat16; 8000 is Relay's port); Colab runs Python 3.13, uv installs the project's 3.12.
     - Expected result: `bench/colab/relay_benchmark.ipynb` does: clone repo → `uv`/pip install → detect GPU → start vLLM (and Relay in minimal mode: in-memory limiter, ledger off) → run scenarios → zip `results/` → download or save to Drive. No code edits inside Colab.
     - Files: `bench/colab/`, `scripts/colab_run.sh`
     - Verify: runs top to bottom on a fresh runtime.
@@ -363,3 +364,4 @@ Goal: **real measurements on hardware we actually have.** We only compare config
 | 2026-10-08 | 0 | Planning docs | Environment inspected; deviations proposed |
 | 2026-10-08 | 1 | 1.1 brief, 1.2 git + GitHub | Considered dropping `make`; kept it after finding the cause was a stale VS Code PATH (see development.md §10). 1.3 now also checks the WSL2 backend. |
 | 2026-10-08 | 1 | 1.3–1.6, 1.8–1.10 | **Day 1 checkpoint met:** OpenAI SDK → Relay → llama.cpp (CPU, non-streaming), verified from a clean clone. Relay moved to port 8000 (8080 taken by another project). 1.7 (SHOULD) was blocked on the NVIDIA driver; driver updated to 617.42 and GPU service added (`make up-gpu`, :8082). llama.cpp ports bound to 127.0.0.1. **Day 1 complete.** |
+| 2026-10-10 | 2 | 2.1–2.10 | **Day 2 complete.** Streaming gateway with backend abstraction, YAML routing, `/v1/models`, usage capture, OpenAI-format errors, request limits; 111 unit + 7 contract tests. Order changed to do streaming before the abstraction. 2.9 retagged SHOULD → MUST (spec requires size limits). Colab check passed (T4, vLLM 0.31.0); findings: `--dtype half`, port clash with Relay, Colab on Python 3.13. 2.11 (OPTIONAL) skipped. |

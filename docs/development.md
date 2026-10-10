@@ -44,7 +44,7 @@ Models are stored **outside** the repository as well (see §5).
 ### uv (Python package and project manager)
 - **What/why:** it creates the virtual environment, installs dependencies from `pyproject.toml`, writes a lock file (`uv.lock`) for reproducible installs, and downloads the right Python version automatically.
 - **Check:** `uv --version` ✅ installed.
-- **Python version:** we pin **3.12** with a `.python-version` file. Reason: Google Colab currently runs 3.12, and matching versions avoids "works locally, fails in Colab". uv downloads 3.12 on first `uv sync`; there is nothing to install by hand.
+- **Python version:** we pin **3.12** with a `.python-version` file. uv downloads 3.12 on first `uv sync`, locally and in Colab, so the project's interpreter does not depend on the machine's. *Correction (2026-10-10):* the original reason, "Colab runs 3.12", is out of date: the Colab check found Python 3.13.15. Moving the pin to 3.13 is possible but undecided.
 
 ### Docker Desktop + Compose
 - **What/why:** runs Redis, PostgreSQL, llama.cpp, Prometheus, Grafana and Jaeger without installing them on Windows.
@@ -224,6 +224,26 @@ Start `.venv/Scripts/uvicorn.exe` directly, not via `uv run`: killing the `uv ru
 ## 9. Benchmarking
 
 *(filled in during Days 5–6)*: local runs, the Colab notebook and where results go.
+
+### Colab feasibility check (2026-10-10, de-risking only, no measurements)
+| Item | Found |
+|---|---|
+| GPU | Tesla T4, 15,360 MiB, compute capability 7.5; driver 580.82.07 (CUDA 13.0) |
+| Python | 3.13.15 |
+| vLLM / torch | 0.31.0 / 2.13.0 (`pip install vllm`, ~4 min; resolver warnings concern Colab's preinstalled cudf/cuml/google-adk, not vLLM) |
+| Start-up | `/health` 200 after ~180 s, including the model download |
+
+```bash
+vllm serve Qwen/Qwen2.5-1.5B-Instruct --served-model-name qwen2.5-1.5b-instruct \
+  --dtype half --max-model-len 4096 --gpu-memory-utilization 0.85 --port 8001
+```
+
+- **`--dtype half` is required:** the T4 has no bfloat16. (FP8 is also unavailable on this GPU.)
+- **Use `--port 8001`:** vLLM defaults to 8000, which is Relay's port; in the notebook both run on one machine. (The check itself ran on 8000 before Relay was involved.)
+- Worked: `/v1/models` lists the public name (`owned_by: vllm`); non-streaming completion with `usage`; streaming with `include_usage` ends with a `choices: []` usage chunk, then `data: [DONE]` (same shape as llama.cpp).
+- A wrong `model` gets 404 with `"type": "NotFoundError"` and a numeric `"code": 404` (OpenAI uses strings). Relay never forwards unknown models, so clients do not see this.
+- vLLM adds many extra response fields (`refusal`, `annotations`, `token_ids`, `kv_transfer_params`, …); Relay passes them through.
+- **Conclusion:** the Day 6 plan (vLLM on the free Colab T4) is feasible as written. Not yet checked: AWQ models and the 7B size on the T4 (Day 6, task 6.1).
 
 ## 10. Troubleshooting
 
