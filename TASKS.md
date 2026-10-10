@@ -90,7 +90,7 @@ Goal: **a correct streaming, OpenAI-compatible gateway with a backend abstractio
     - Expected result: models for `ChatCompletionRequest` (the subset we support, with unknown fields passed through), responses and error objects.
     - Files: `src/relay/api/schemas.py`
     - Verify: unit tests for valid, invalid and extra-field payloads.
-- [ ] `[MUST]` **2.2 SSE streaming passthrough**
+- [x] `[MUST]` **2.2 SSE streaming passthrough** (done 2026-10-10)
     - Why: streaming is what makes LLM UX tolerable, and it is the hardest part of a proxy to get right (flushing, backpressure, disconnects).
     - Expected result: `stream: true` uses `httpx` `client.stream()` and FastAPI `StreamingResponse`; chunks are forwarded as they arrive; client disconnect cancels the upstream request.
     - Files: `src/relay/api/chat.py`

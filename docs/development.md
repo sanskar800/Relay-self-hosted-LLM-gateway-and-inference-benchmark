@@ -169,7 +169,14 @@ make run    # Relay on http://localhost:8000, auto-reloads on changes in src/
 
 - **Port 8000**, not 8080: on this machine another project's nginx container already publishes 8080. Docker and uvicorn can both bind it on Windows without an error, and `localhost:8080` then silently reaches nginx. Check with `Get-NetTCPConnection -LocalPort 8000 -State Listen` before blaming Relay.
 - Settings come from `RELAY_*` environment variables or `.env` (template: `.env.example`): `RELAY_BACKEND_URL` (default `http://localhost:8081`), `RELAY_CONNECT_TIMEOUT_S` (5), `RELAY_REQUEST_TIMEOUT_S` (120).
-- Endpoints so far: `GET /healthz` (liveness) and `POST /v1/chat/completions` (non-streaming; `stream: true` returns 501 until streaming lands). Backend down → 502, timeout → 504, both in OpenAI error format.
+- Endpoints so far: `GET /healthz` (liveness) and `POST /v1/chat/completions` (non-streaming and `stream: true`). Invalid request → 400 naming the field (`param`); backend down → 502; timeout → 504; all in OpenAI error format. Swagger at http://localhost:8000/docs has a pre-filled example body.
+
+### How streaming behaves (checked 2026-10-10 against llama.cpp)
+- Events are forwarded **as soon as each one is complete** (Relay re-cuts TCP chunks into whole `data: …\n\n` events), with `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `X-Accel-Buffering: no`.
+- **Before the first byte:** backend unreachable/timeout → normal 502/504 JSON; a backend 4xx/5xx keeps its status and body.
+- **Mid-stream failure:** status is already 200, so Relay sends `data: {"error": {...}}` and closes; the OpenAI SDK raises it as an `APIError`. No `[DONE]` follows.
+- **Client disconnect cancels the engine's work.** Reproduce: stream a 400-token request, read 5 events, close the connection; llama.cpp logs `stop: cancel task` and releases the slot at ~46 tokens.
+- **Read timeout = maximum silence between chunks**, not total stream duration (`RELAY_REQUEST_TIMEOUT_S`).
 
 ## 8. Testing
 

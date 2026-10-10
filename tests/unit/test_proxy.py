@@ -76,12 +76,3 @@ def test_invalid_body_is_rejected_before_backend(raw: bytes) -> None:
             "/v1/chat/completions", content=raw, headers={"Content-Type": "application/json"}
         )
     assert resp.status_code == 400
-
-
-def test_streaming_is_rejected_until_implemented() -> None:
-    def backend(request: httpx.Request) -> httpx.Response:
-        raise AssertionError("backend must not be called")
-
-    with make_client(backend) as client:
-        resp = client.post("/v1/chat/completions", json={**VALID, "stream": True})
-    assert resp.status_code == 501

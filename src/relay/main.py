@@ -4,13 +4,11 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI
 
-from relay.api.errors import install_error_handlers, openai_error
-from relay.api.schemas import ChatCompletionRequest, ErrorResponse
+from relay.api import chat
+from relay.api.errors import install_error_handlers
 from relay.config import Settings
-
-ERROR_RESPONSES = {status: {"model": ErrorResponse} for status in (400, 501, 502, 504)}
 
 
 def create_app(
@@ -22,6 +20,8 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # One client (and connection pool) for the whole process, closed on shutdown.
+        # For streams, the read timeout applies to each read, i.e. it is the maximum
+        # silence between chunks, not the total duration.
         async with httpx.AsyncClient(
             base_url=str(settings.backend_url),
             timeout=httpx.Timeout(settings.request_timeout_s, connect=settings.connect_timeout_s),
@@ -32,38 +32,12 @@ def create_app(
 
     app = FastAPI(title="Relay", lifespan=lifespan)
     install_error_handlers(app)
+    app.include_router(chat.router)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
         """Liveness: the process is up. Says nothing about backends (that is /readyz, Day 4)."""
         return {"status": "ok"}
-
-    @app.post("/v1/chat/completions", responses=ERROR_RESPONSES)
-    async def chat_completions(payload: ChatCompletionRequest, request: Request) -> Response:
-        # `payload` is validated (invalid -> 400 via the error handler); the backend still
-        # receives the ORIGINAL bytes, so unknown fields and formatting are untouched.
-        body = await request.body()
-        if payload.stream:
-            # Streaming needs chunk-by-chunk forwarding (Day 2); buffering it would be wrong.
-            return openai_error(501, "Streaming is not supported yet.", "not_implemented")
-
-        client: httpx.AsyncClient = request.app.state.backend
-        try:
-            upstream = await client.post(
-                "/v1/chat/completions",
-                content=body,
-                headers={"Content-Type": "application/json"},
-            )
-        except httpx.TimeoutException:
-            return openai_error(504, "Backend timed out.", "backend_timeout")
-        except httpx.RequestError:
-            return openai_error(502, "Backend unavailable.", "backend_unavailable")
-
-        return Response(
-            content=upstream.content,
-            status_code=upstream.status_code,
-            media_type=upstream.headers.get("content-type", "application/json"),
-        )
 
     return app
 

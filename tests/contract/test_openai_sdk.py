@@ -41,13 +41,43 @@ def test_max_tokens_is_respected(client: openai.OpenAI, model: str) -> None:
     assert completion.choices[0].finish_reason == "length"
 
 
-def test_error_body_is_parsed_by_the_sdk(client: openai.OpenAI, model: str) -> None:
-    # Streaming is not implemented yet, so Relay answers 501 in OpenAI error format.
-    # This test changes when streaming lands; the point is that the SDK raises a
-    # typed error carrying Relay's message, not a generic decode failure.
-    with pytest.raises(openai.APIStatusError) as excinfo:
+def test_streaming_yields_incremental_chunks(client: openai.OpenAI, model: str) -> None:
+    stream = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": "Count from 1 to 5, separated by spaces."}],
+        max_tokens=30,
+        temperature=0,
+        stream=True,
+    )
+    chunks = list(stream)
+
+    assert all(isinstance(c, openai.types.chat.ChatCompletionChunk) for c in chunks)
+    text = "".join(c.choices[0].delta.content or "" for c in chunks if c.choices)
+    assert "1" in text and "5" in text
+    content_chunks = [c for c in chunks if c.choices and c.choices[0].delta.content]
+    assert len(content_chunks) > 1  # token by token, not one buffered blob
+    assert chunks[-1].choices[0].finish_reason in {"stop", "length"}
+
+
+def test_streaming_usage_chunk_with_include_usage(client: openai.OpenAI, model: str) -> None:
+    stream = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": "Say hi."}],
+        max_tokens=10,
+        temperature=0,
+        stream=True,
+        stream_options={"include_usage": True},
+    )
+    chunks = list(stream)
+    last = chunks[-1]
+    assert last.choices == []  # the usage chunk has no choices
+    assert last.usage is not None and last.usage.completion_tokens > 0
+
+
+def test_validation_error_is_parsed_by_the_sdk(client: openai.OpenAI, model: str) -> None:
+    with pytest.raises(openai.BadRequestError) as excinfo:
         client.chat.completions.create(
-            model=model, messages=[{"role": "user", "content": "hi"}], stream=True
+            model=model, messages=[{"role": "robot", "content": "hi"}], max_tokens=5
         )
-    assert excinfo.value.status_code == 501
-    assert "Streaming is not supported" in excinfo.value.message
+    assert excinfo.value.status_code == 400
+    assert excinfo.value.body["param"] == "messages.0.role"
