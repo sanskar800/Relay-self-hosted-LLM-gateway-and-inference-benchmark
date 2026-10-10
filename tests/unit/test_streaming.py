@@ -5,9 +5,11 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from relay.api.chat import _relay_chunks, iter_sse_events
+from relay.api.chat import _relay_events
+from relay.backends.sse import iter_sse_events
 from relay.config import Settings
 from relay.main import create_app
+from tests.unit.fakes import FakeStream
 
 REQUEST = {"model": "m", "messages": [{"role": "user", "content": "hi"}], "stream": True}
 
@@ -112,9 +114,9 @@ def test_backend_unreachable_before_streaming_is_a_json_error(exc: Exception, st
 
 async def test_upstream_is_closed_when_client_stops_reading() -> None:
     # Simulates a client disconnect: the generator is closed after one event.
-    upstream = httpx.Response(200, content=chunks(list(EVENTS)))
-    relay = _relay_chunks(upstream)
+    upstream = FakeStream(list(EVENTS))
+    relay = _relay_events(upstream)
     assert await anext(relay) == EVENTS[0]
-    assert not upstream.is_closed
+    assert not upstream.closed
     await relay.aclose()  # what Starlette does when the client goes away
-    assert upstream.is_closed  # -> the connection to the engine is released
+    assert upstream.closed  # -> the connection to the engine is released

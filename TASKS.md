@@ -95,7 +95,7 @@ Goal: **a correct streaming, OpenAI-compatible gateway with a backend abstractio
     - Expected result: `stream: true` uses `httpx` `client.stream()` and FastAPI `StreamingResponse`; chunks are forwarded as they arrive; client disconnect cancels the upstream request.
     - Files: `src/relay/api/chat.py`
     - Verify: `curl -N` shows tokens arriving incrementally; the contract test with `stream=True` passes; disconnect test: llama.cpp logs show the request cancelled.
-- [ ] `[MUST]` **2.3 Backend abstraction**
+- [x] `[MUST]` **2.3 Backend abstraction** (done 2026-10-10)
     - Why: routing, retries and accounting must not depend on which engine is behind them.
     - Expected result: `Backend` protocol (`chat`, `stream`, `health`, `name`); `OpenAICompatBackend` base; `LlamaCppBackend`, `VLLMBackend` subclasses.
     - Files: `src/relay/backends/{base,openai_compat,llamacpp,vllm}.py`

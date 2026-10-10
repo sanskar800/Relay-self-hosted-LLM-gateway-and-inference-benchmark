@@ -1,19 +1,25 @@
-"""POST /v1/chat/completions: validated, then proxied (buffered or streamed) to the backend."""
+"""POST /v1/chat/completions: validated, then proxied (buffered or streamed) to a backend."""
 
 import json
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 
-import httpx
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import StreamingResponse
 
 from relay.api.errors import openai_error
 from relay.api.schemas import ChatCompletionRequest, ErrorResponse
+from relay.backends.base import (
+    Backend,
+    BackendHTTPError,
+    BackendStream,
+    BackendStreamError,
+    BackendTimeout,
+    BackendUnavailable,
+)
 
 router = APIRouter()
 
-UPSTREAM_PATH = "/v1/chat/completions"
-JSON_HEADERS = {"Content-Type": "application/json"}
 SSE_HEADERS = {
     # Never cache a token stream; ask any reverse proxy in front not to buffer it.
     "Cache-Control": "no-cache",
@@ -29,89 +35,50 @@ async def chat_completions(payload: ChatCompletionRequest, request: Request) -> 
     # `payload` is validated (invalid -> 400 via the error handler); the backend still
     # receives the ORIGINAL bytes, so unknown fields and formatting are untouched.
     body = await request.body()
-    client: httpx.AsyncClient = request.app.state.backend
-    if payload.stream:
-        return await _stream(client, body)
-    return await _complete(client, body)
-
-
-async def _complete(client: httpx.AsyncClient, body: bytes) -> Response:
+    backend: Backend = request.app.state.backend
     try:
-        upstream = await client.post(UPSTREAM_PATH, content=body, headers=JSON_HEADERS)
-    except httpx.TimeoutException:
-        return openai_error(504, "Backend timed out.", "backend_timeout")
-    except httpx.RequestError:
-        return openai_error(502, "Backend unavailable.", "backend_unavailable")
-    return Response(
-        content=upstream.content,
-        status_code=upstream.status_code,
-        media_type=upstream.headers.get("content-type", "application/json"),
-    )
-
-
-async def _stream(client: httpx.AsyncClient, body: bytes) -> Response:
-    # Phase 1, before any byte reaches the client: we can still answer with a normal
-    # HTTP error status, because no response headers have been sent yet.
-    request = client.build_request("POST", UPSTREAM_PATH, content=body, headers=JSON_HEADERS)
-    try:
-        upstream = await client.send(request, stream=True)
-    except httpx.TimeoutException:
-        return openai_error(504, "Backend timed out.", "backend_timeout")
-    except httpx.RequestError:
-        return openai_error(502, "Backend unavailable.", "backend_unavailable")
-
-    if upstream.status_code != 200:
+        if payload.stream:
+            # Phase 1: nothing has been sent to the client yet, so a failure here can
+            # still be an ordinary HTTP error response.
+            upstream = await backend.stream(body)
+        else:
+            result = await backend.chat(body)
+            return Response(result.content, result.status_code, media_type=result.content_type)
+    except BackendHTTPError as exc:
         # The backend refused the request (e.g. 400): pass its error through unchanged.
-        content = await upstream.aread()
-        await upstream.aclose()
-        return Response(
-            content=content,
-            status_code=upstream.status_code,
-            media_type=upstream.headers.get("content-type", "application/json"),
-        )
+        return Response(exc.content, exc.status_code, media_type=exc.content_type)
+    except BackendTimeout:
+        return openai_error(504, "Backend timed out.", "backend_timeout")
+    except BackendUnavailable:
+        return openai_error(502, "Backend unavailable.", "backend_unavailable")
 
-    # Phase 2: 200 + headers go out with the first chunk. From here on the status code
+    # Phase 2: 200 + headers go out with the first event. From here on the status code
     # cannot change, so failures become an SSE error event.
     return StreamingResponse(
-        _relay_chunks(upstream), media_type="text/event-stream", headers=SSE_HEADERS
+        _relay_events(upstream), media_type="text/event-stream", headers=SSE_HEADERS
     )
 
 
-async def _relay_chunks(upstream: httpx.Response) -> AsyncIterator[bytes]:
-    """Forward each SSE event as soon as it is complete.
+async def _relay_events(upstream: BackendStream) -> AsyncIterator[bytes]:
+    """Forward each event as soon as it is complete.
 
-    Pulling the next upstream chunk only after each yield gives backpressure: a slow
-    client slows the backend instead of growing a buffer here.
+    Pulling the next event only after each yield gives backpressure: a slow client slows
+    the backend instead of growing a buffer here.
     """
     try:
-        async for event in iter_sse_events(upstream.aiter_bytes()):
-            yield event
-    except httpx.TimeoutException:
-        yield _sse_error("Backend stopped sending tokens (timeout).", "backend_timeout")
-    except httpx.TransportError:
-        yield _sse_error("Backend connection lost mid-stream.", "backend_unavailable")
+        async with aclosing(upstream.events()) as events:
+            async for event in events:
+                yield event
+    except BackendStreamError as exc:
+        if exc.timeout:
+            yield _sse_error("Backend stopped sending tokens (timeout).", "backend_timeout")
+        else:
+            yield _sse_error("Backend connection lost mid-stream.", "backend_unavailable")
     finally:
-        # Runs on normal end, on upstream failure, and when the client disconnects
-        # (Starlette cancels this generator). Closing the upstream response closes the
+        # Runs on normal end, on backend failure, and when the client disconnects
+        # (Starlette cancels this generator). Closing the backend stream closes the
         # connection to the engine, which stops generating for this request.
         await upstream.aclose()
-
-
-async def iter_sse_events(chunks: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
-    """Re-cut a byte stream into whole SSE events (each ending in a blank line).
-
-    TCP chunks can split an event anywhere. Forwarding whole events means a mid-stream
-    failure never leaves half an event in front of the error event we send.
-    """
-    buffer = b""
-    async for chunk in chunks:
-        buffer += chunk.replace(b"\r\n", b"\n")
-        while (end := buffer.find(b"\n\n")) != -1:
-            yield buffer[: end + 2]
-            buffer = buffer[end + 2 :]
-    if buffer.strip():
-        # Stream ended without the final blank line: still deliver the last event.
-        yield buffer.rstrip(b"\n") + b"\n\n"
 
 
 def _sse_error(message: str, error_type: str) -> bytes:

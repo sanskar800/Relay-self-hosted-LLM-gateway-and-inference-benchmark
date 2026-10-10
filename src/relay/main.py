@@ -8,27 +8,37 @@ from fastapi import FastAPI
 
 from relay.api import chat
 from relay.api.errors import install_error_handlers
+from relay.backends import Backend, LlamaCppBackend
 from relay.config import Settings
 
 
 def create_app(
-    settings: Settings | None = None, transport: httpx.AsyncBaseTransport | None = None
+    settings: Settings | None = None,
+    *,
+    backend: Backend | None = None,
+    transport: httpx.AsyncBaseTransport | None = None,
 ) -> FastAPI:
-    """Build the app. `transport` lets tests replace the network with a fake backend."""
+    """Build the app.
+
+    Tests can inject a fake `backend` (no HTTP at all), or a `transport` that replaces
+    the network under the real HTTP backend.
+    """
     settings = settings or Settings()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        # One client (and connection pool) for the whole process, closed on shutdown.
-        # For streams, the read timeout applies to each read, i.e. it is the maximum
-        # silence between chunks, not the total duration.
-        async with httpx.AsyncClient(
-            base_url=str(settings.backend_url),
-            timeout=httpx.Timeout(settings.request_timeout_s, connect=settings.connect_timeout_s),
+        # One backend (and connection pool) for the whole process, closed on shutdown.
+        app.state.backend = backend or LlamaCppBackend(
+            "llamacpp",
+            str(settings.backend_url),
+            connect_timeout_s=settings.connect_timeout_s,
+            read_timeout_s=settings.request_timeout_s,
             transport=transport,
-        ) as client:
-            app.state.backend = client
+        )
+        try:
             yield
+        finally:
+            await app.state.backend.aclose()
 
     app = FastAPI(title="Relay", lifespan=lifespan)
     install_error_handlers(app)
