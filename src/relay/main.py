@@ -1,48 +1,67 @@
-"""Relay gateway: FastAPI app that proxies OpenAI-compatible requests to a backend."""
+"""Relay gateway: FastAPI app that proxies OpenAI-compatible requests to backends."""
 
-from collections.abc import AsyncIterator
+import time
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI
 
-from relay.api import chat
+from relay.api import chat, models
 from relay.api.errors import install_error_handlers
-from relay.backends import Backend, LlamaCppBackend
-from relay.config import Settings
+from relay.backends import ENGINES, Backend
+from relay.config import RelayConfig, Settings, load_config
+
+
+def build_backends(
+    config: RelayConfig, transport: httpx.AsyncBaseTransport | None = None
+) -> dict[str, Backend]:
+    """One Backend object (with its own connection pool) per configured backend."""
+    return {
+        name: ENGINES[cfg.engine](
+            name,
+            str(cfg.url),
+            connect_timeout_s=cfg.connect_timeout_s,
+            read_timeout_s=cfg.read_timeout_s,
+            transport=transport,
+        )
+        for name, cfg in config.backends.items()
+    }
 
 
 def create_app(
     settings: Settings | None = None,
     *,
-    backend: Backend | None = None,
+    config: RelayConfig | None = None,
+    backends: Mapping[str, Backend] | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> FastAPI:
     """Build the app.
 
-    Tests can inject a fake `backend` (no HTTP at all), or a `transport` that replaces
-    the network under the real HTTP backend.
+    The config is loaded and validated here, at startup, so a bad file stops the process
+    before it serves anything. Tests can pass a `config`, ready-made fake `backends`
+    (no HTTP at all), or a `transport` that replaces the network under real backends.
     """
-    settings = settings or Settings()
+    config = config or load_config((settings or Settings()).config_path)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        # One backend (and connection pool) for the whole process, closed on shutdown.
-        app.state.backend = backend or LlamaCppBackend(
-            "llamacpp",
-            str(settings.backend_url),
-            connect_timeout_s=settings.connect_timeout_s,
-            read_timeout_s=settings.request_timeout_s,
-            transport=transport,
-        )
+        app.state.config = config
+        app.state.backends = dict(backends) if backends else build_backends(config, transport)
+        missing = set(config.backends) - set(app.state.backends)
+        if missing:
+            raise RuntimeError(f"no backend object for configured backends: {sorted(missing)}")
+        app.state.started_at = int(time.time())
         try:
             yield
         finally:
-            await app.state.backend.aclose()
+            for backend in app.state.backends.values():
+                await backend.aclose()
 
     app = FastAPI(title="Relay", lifespan=lifespan)
     install_error_handlers(app)
     app.include_router(chat.router)
+    app.include_router(models.router)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

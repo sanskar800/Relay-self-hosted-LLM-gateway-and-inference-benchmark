@@ -100,12 +100,12 @@ Goal: **a correct streaming, OpenAI-compatible gateway with a backend abstractio
     - Expected result: `Backend` protocol (`chat`, `stream`, `health`, `name`); `OpenAICompatBackend` base; `LlamaCppBackend`, `VLLMBackend` subclasses.
     - Files: `src/relay/backends/{base,openai_compat,llamacpp,vllm}.py`
     - Verify: unit tests with a fake backend.
-- [ ] `[MUST]` **2.4 Model/backends config (YAML)**
+- [x] `[MUST]` **2.4 Model/backends config (YAML)** (done 2026-10-10)
     - Why: the public model name (`qwen2.5-1.5b-instruct`) maps to an ordered list of backends. This is the basis for routing and fallback.
     - Expected result: `config/relay.yaml` loaded and validated at startup.
     - Files: `config/relay.yaml`, `src/relay/config.py`
     - Verify: startup fails with a clear error on invalid config (tested).
-- [ ] `[MUST]` **2.5 `GET /v1/models`**
+- [x] `[MUST]` **2.5 `GET /v1/models`** (done 2026-10-10)
     - Why: SDKs and tools call it; part of API compatibility.
     - Files: `src/relay/api/models.py`
     - Verify: `client.models.list()` in the contract tests.

@@ -4,8 +4,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from relay.config import Settings
-from relay.main import create_app
+from tests.unit.fakes import app_with_transport
 
 VALID = {"model": "m", "messages": [{"role": "user", "content": "hi"}]}
 
@@ -19,7 +18,7 @@ COMPLETION = {
 
 
 def make_client(handler) -> TestClient:
-    app = create_app(Settings(), transport=httpx.MockTransport(handler))
+    app = app_with_transport(httpx.MockTransport(handler))
     return TestClient(app)
 
 

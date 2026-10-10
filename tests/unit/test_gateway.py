@@ -11,14 +11,13 @@ from relay.backends.base import (
     BackendTimeout,
     BackendUnavailable,
 )
-from relay.main import create_app
-from tests.unit.fakes import FakeBackend, FakeStream
+from tests.unit.fakes import FakeBackend, FakeStream, app_with_fake
 
 REQUEST = {"model": "m", "messages": [{"role": "user", "content": "hi"}]}
 
 
 def post(backend: FakeBackend, **extra) -> tuple[int, bytes]:
-    with TestClient(create_app(backend=backend)) as client:
+    with TestClient(app_with_fake(backend)) as client:
         resp = client.post("/v1/chat/completions", json={**REQUEST, **extra})
         return resp.status_code, resp.content
 
@@ -62,6 +61,6 @@ def test_backend_errors_map_to_http_statuses() -> None:
 
 def test_backend_is_closed_on_shutdown() -> None:
     backend = FakeBackend()
-    with TestClient(create_app(backend=backend)):
+    with TestClient(app_with_fake(backend)):
         assert not backend.closed
     assert backend.closed

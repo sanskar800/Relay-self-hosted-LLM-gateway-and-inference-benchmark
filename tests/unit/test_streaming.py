@@ -7,9 +7,7 @@ from fastapi.testclient import TestClient
 
 from relay.api.chat import _relay_events
 from relay.backends.sse import iter_sse_events
-from relay.config import Settings
-from relay.main import create_app
-from tests.unit.fakes import FakeStream
+from tests.unit.fakes import FakeStream, app_with_transport
 
 REQUEST = {"model": "m", "messages": [{"role": "user", "content": "hi"}], "stream": True}
 
@@ -49,7 +47,7 @@ def sse_backend(parts: list[bytes], fail_after: int | None = None):
 
 
 def post_stream(handler) -> tuple[httpx.Response, bytes]:
-    app = create_app(Settings(), transport=httpx.MockTransport(handler))
+    app = app_with_transport(httpx.MockTransport(handler))
     with (
         TestClient(app) as client,
         client.stream("POST", "/v1/chat/completions", json=REQUEST) as resp,

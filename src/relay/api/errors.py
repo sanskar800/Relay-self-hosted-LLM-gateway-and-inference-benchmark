@@ -7,10 +7,21 @@ from fastapi.responses import JSONResponse
 from relay.api.schemas import ErrorDetail, ErrorResponse
 
 
+def model_not_found(model: str) -> JSONResponse:
+    """OpenAI's answer for an unknown model: 404 with code model_not_found."""
+    message = f"The model `{model}` does not exist or you do not have access to it."
+    return openai_error(404, message, "invalid_request_error", "model", "model_not_found")
+
+
 def openai_error(
-    status_code: int, message: str, error_type: str, param: str | None = None
+    status_code: int,
+    message: str,
+    error_type: str,
+    param: str | None = None,
+    code: str | None = None,
 ) -> JSONResponse:
-    body = ErrorResponse(error=ErrorDetail(message=message, type=error_type, param=param))
+    detail = ErrorDetail(message=message, type=error_type, param=param, code=code)
+    body = ErrorResponse(error=detail)
     return JSONResponse(status_code=status_code, content=body.model_dump())
 
 

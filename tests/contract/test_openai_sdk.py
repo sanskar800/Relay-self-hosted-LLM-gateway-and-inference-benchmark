@@ -81,3 +81,17 @@ def test_validation_error_is_parsed_by_the_sdk(client: openai.OpenAI, model: str
         )
     assert excinfo.value.status_code == 400
     assert excinfo.value.body["param"] == "messages.0.role"
+
+
+def test_models_list_and_retrieve(client: openai.OpenAI, model: str) -> None:
+    listed = {m.id for m in client.models.list()}
+    assert model in listed
+    assert client.models.retrieve(model).id == model
+
+
+def test_unknown_model_raises_not_found(client: openai.OpenAI) -> None:
+    with pytest.raises(openai.NotFoundError) as excinfo:
+        client.chat.completions.create(
+            model="no-such-model", messages=[{"role": "user", "content": "hi"}], max_tokens=5
+        )
+    assert excinfo.value.code == "model_not_found"

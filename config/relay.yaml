@@ -1,0 +1,21 @@
+# Relay model routing. Loaded and validated at startup (RELAY_CONFIG overrides the path).
+#
+# backends: the inference servers Relay can call.
+# models:   public model names clients may request, each mapped to backends in order
+#           of preference. Relay uses the first one; fallback down the list comes later.
+#
+# Each backend must serve the model under its PUBLIC name (llama.cpp --alias,
+# vLLM --served-model-name), so Relay never has to rewrite the request body.
+
+backends:
+  llamacpp-cpu:
+    engine: llamacpp
+    url: http://127.0.0.1:8081
+  llamacpp-gpu:            # opt-in: `make up-gpu`
+    engine: llamacpp
+    url: http://127.0.0.1:8082
+
+models:
+  qwen2.5-1.5b-instruct:
+    # CPU first while there is no fallback: the GPU service is not always running.
+    backends: [llamacpp-cpu, llamacpp-gpu]

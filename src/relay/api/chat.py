@@ -7,7 +7,7 @@ from contextlib import aclosing
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import StreamingResponse
 
-from relay.api.errors import openai_error
+from relay.api.errors import model_not_found, openai_error
 from relay.api.schemas import ChatCompletionRequest, ErrorResponse
 from relay.backends.base import (
     Backend,
@@ -29,13 +29,17 @@ SSE_HEADERS = {
 
 @router.post(
     "/v1/chat/completions",
-    responses={status: {"model": ErrorResponse} for status in (400, 502, 504)},
+    responses={status: {"model": ErrorResponse} for status in (400, 404, 502, 504)},
 )
 async def chat_completions(payload: ChatCompletionRequest, request: Request) -> Response:
     # `payload` is validated (invalid -> 400 via the error handler); the backend still
     # receives the ORIGINAL bytes, so unknown fields and formatting are untouched.
     body = await request.body()
-    backend: Backend = request.app.state.backend
+    route = request.app.state.config.models.get(payload.model)
+    if route is None:
+        return model_not_found(payload.model)
+    # First backend in preference order (fallback down the list comes with routing).
+    backend: Backend = request.app.state.backends[route.backends[0]]
     try:
         if payload.stream:
             # Phase 1: nothing has been sent to the client yet, so a failure here can

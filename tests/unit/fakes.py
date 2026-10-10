@@ -2,7 +2,12 @@
 
 from collections.abc import AsyncIterator
 
+import httpx
+from fastapi import FastAPI
+
 from relay.backends.base import BackendError, BackendResponse
+from relay.config import RelayConfig
+from relay.main import create_app
 
 
 class FakeStream:
@@ -60,3 +65,23 @@ class FakeBackend:
 
     async def aclose(self) -> None:
         self.closed = True
+
+
+def make_config(model: str = "m", backend: str = "b1", url: str = "http://engine") -> RelayConfig:
+    """Smallest valid routing config: one model served by one llama.cpp backend."""
+    return RelayConfig.model_validate(
+        {
+            "backends": {backend: {"engine": "llamacpp", "url": url}},
+            "models": {model: {"backends": [backend]}},
+        }
+    )
+
+
+def app_with_fake(backend: "FakeBackend", model: str = "m") -> FastAPI:
+    """Gateway with an in-memory backend: no HTTP below Relay."""
+    return create_app(config=make_config(model, backend.name), backends={backend.name: backend})
+
+
+def app_with_transport(transport: httpx.AsyncBaseTransport, model: str = "m") -> FastAPI:
+    """Gateway with the real HTTP backend, whose network is replaced by `transport`."""
+    return create_app(config=make_config(model), transport=transport)

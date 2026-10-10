@@ -168,15 +168,25 @@ make run    # Relay on http://localhost:8000, auto-reloads on changes in src/
 ```
 
 - **Port 8000**, not 8080: on this machine another project's nginx container already publishes 8080. Docker and uvicorn can both bind it on Windows without an error, and `localhost:8080` then silently reaches nginx. Check with `Get-NetTCPConnection -LocalPort 8000 -State Listen` before blaming Relay.
-- Settings come from `RELAY_*` environment variables or `.env` (template: `.env.example`): `RELAY_BACKEND_URL` (default `http://localhost:8081`), `RELAY_CONNECT_TIMEOUT_S` (5), `RELAY_REQUEST_TIMEOUT_S` (120).
-- Endpoints so far: `GET /healthz` (liveness) and `POST /v1/chat/completions` (non-streaming and `stream: true`). Invalid request → 400 naming the field (`param`); backend down → 502; timeout → 504; all in OpenAI error format. Swagger at http://localhost:8000/docs has a pre-filled example body.
+- Settings come from `RELAY_*` environment variables or `.env` (template: `.env.example`). Today only `RELAY_CONFIG` (default `config/relay.yaml`).
+- Endpoints so far: `GET /healthz` (liveness), `GET /v1/models`, `GET /v1/models/{id}` and `POST /v1/chat/completions` (non-streaming and `stream: true`). Invalid request → 400 naming the field (`param`); unknown model → 404 `model_not_found`; backend down → 502; timeout → 504; all in OpenAI error format. Swagger at http://localhost:8000/docs has a pre-filled example body.
+
+### Model routing config (`config/relay.yaml`)
+- `backends:` name → `engine` (`llamacpp` | `vllm`), `url`, optional `connect_timeout_s` (5), `read_timeout_s` (120).
+- `models:` public model name → `backends:` (names, **in order of preference**), optional `owned_by`. Relay currently uses the first backend; fallback down the list comes with routing.
+- **Validated at startup; unknown keys are rejected.** A typo stops Relay with a clear error, e.g. `model 'qwen2.5-1.5b-instruct' refers to undefined backends: ['llamacpp-cpuu']` (exit code 1).
+- Each backend must serve the model under its **public** name (llama.cpp `--alias`, vLLM `--served-model-name`), so Relay never rewrites the request body.
+- `GET /v1/models` is answered from this file, not by asking backends.
+
+### Running a throwaway Relay in scripts (Windows)
+Start `.venv/Scripts/uvicorn.exe` directly, not via `uv run`: killing the `uv run` wrapper from Git Bash can leave the Python child running and holding the port, so a later check silently talks to stale code. Afterwards, confirm the port is free (`Get-NetTCPConnection -LocalPort <port> -State Listen`).
 
 ### How streaming behaves (checked 2026-10-10 against llama.cpp)
 - Events are forwarded **as soon as each one is complete** (Relay re-cuts TCP chunks into whole `data: …\n\n` events), with `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `X-Accel-Buffering: no`.
 - **Before the first byte:** backend unreachable/timeout → normal 502/504 JSON; a backend 4xx/5xx keeps its status and body.
 - **Mid-stream failure:** status is already 200, so Relay sends `data: {"error": {...}}` and closes; the OpenAI SDK raises it as an `APIError`. No `[DONE]` follows.
 - **Client disconnect cancels the engine's work.** Reproduce: stream a 400-token request, read 5 events, close the connection; llama.cpp logs `stop: cancel task` and releases the slot at ~46 tokens.
-- **Read timeout = maximum silence between chunks**, not total stream duration (`RELAY_REQUEST_TIMEOUT_S`).
+- **Read timeout = maximum silence between chunks**, not total stream duration (`read_timeout_s` per backend in `config/relay.yaml`).
 
 ## 8. Testing
 
