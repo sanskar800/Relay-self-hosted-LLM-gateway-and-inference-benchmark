@@ -1,16 +1,38 @@
 """Relay gateway: FastAPI app that proxies OpenAI-compatible requests to backends."""
 
+import logging
 import time
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI
 
+from relay.accounting.usage import UsageRecord
 from relay.api import chat, models
 from relay.api.errors import install_error_handlers
 from relay.backends import ENGINES, Backend
 from relay.config import RelayConfig, Settings, load_config
+
+log = logging.getLogger("relay.usage")
+
+
+def configure_logging() -> None:
+    """Minimal console logging for Relay's own loggers (structured JSON logs come later).
+
+    uvicorn configures only its own loggers, so without this our INFO lines are dropped.
+    """
+    logger = logging.getLogger("relay")
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s %(message)s"))
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+
+
+def log_usage(record: UsageRecord) -> None:
+    """Default usage sink until the usage ledger exists: one log line per request."""
+    log.info("usage %s", record)
 
 
 def build_backends(
@@ -35,6 +57,7 @@ def create_app(
     config: RelayConfig | None = None,
     backends: Mapping[str, Backend] | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
+    usage_sink: Callable[[UsageRecord], None] = log_usage,
 ) -> FastAPI:
     """Build the app.
 
@@ -42,6 +65,7 @@ def create_app(
     before it serves anything. Tests can pass a `config`, ready-made fake `backends`
     (no HTTP at all), or a `transport` that replaces the network under real backends.
     """
+    configure_logging()
     config = config or load_config((settings or Settings()).config_path)
 
     @asynccontextmanager
@@ -52,6 +76,8 @@ def create_app(
         if missing:
             raise RuntimeError(f"no backend object for configured backends: {sorted(missing)}")
         app.state.started_at = int(time.time())
+        # Called once per completed request with its token usage.
+        app.state.usage_sink = usage_sink
         try:
             yield
         finally:

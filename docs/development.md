@@ -175,7 +175,14 @@ make run    # Relay on http://localhost:8000, auto-reloads on changes in src/
 - `backends:` name → `engine` (`llamacpp` | `vllm`), `url`, optional `connect_timeout_s` (5), `read_timeout_s` (120).
 - `models:` public model name → `backends:` (names, **in order of preference**), optional `owned_by`. Relay currently uses the first backend; fallback down the list comes with routing.
 - **Validated at startup; unknown keys are rejected.** A typo stops Relay with a clear error, e.g. `model 'qwen2.5-1.5b-instruct' refers to undefined backends: ['llamacpp-cpuu']` (exit code 1).
-- Each backend must serve the model under its **public** name (llama.cpp `--alias`, vLLM `--served-model-name`), so Relay never rewrites the request body.
+- Each backend must serve the model under its **public** name (llama.cpp `--alias`, vLLM `--served-model-name`), so Relay never has to rewrite `model`.
+
+### Token usage (accounting input)
+- Every completed request produces a `UsageRecord` (model, backend, stream, status, prompt/completion tokens, `source`). Today it is logged as `INFO: relay.usage …`; the usage ledger replaces this sink later.
+- **Non-streaming:** read from the response's `usage`.
+- **Streaming:** if the client did not set `stream_options.include_usage`, Relay adds it (the **only** change Relay makes to a request; the JSON is then re-serialised, so whitespace may differ) and removes the engine's usage-only chunk (`choices: []`) before it reaches the client. If the client did set it, the request bytes and the usage chunk pass through unchanged.
+- **`source`:** `engine` = the engine's own count (exact). `estimated` = no usage chunk arrived (client disconnected, stream broke, or engine ignores the option): completion ≈ number of content chunks, prompt unknown. `missing` = nothing to go on.
+- Verified 2026-10-10 against llama.cpp: a streamed request without `include_usage` recorded the same counts the engine reported for the identical non-streamed request (35 prompt / 24 completion); a disconnect after 5 events recorded `completion=5, source='estimated'`.
 - `GET /v1/models` is answered from this file, not by asking backends.
 
 ### Running a throwaway Relay in scripts (Windows)

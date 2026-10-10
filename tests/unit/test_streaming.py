@@ -5,6 +5,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from relay.accounting.usage import StreamUsage
 from relay.api.chat import _relay_events
 from relay.backends.sse import iter_sse_events
 from tests.unit.fakes import FakeStream, app_with_transport
@@ -110,11 +111,15 @@ def test_backend_unreachable_before_streaming_is_a_json_error(exc: Exception, st
     assert json.loads(body)["error"]["type"].startswith("backend_")
 
 
-async def test_upstream_is_closed_when_client_stops_reading() -> None:
+async def test_upstream_is_closed_and_usage_recorded_when_client_stops_reading() -> None:
     # Simulates a client disconnect: the generator is closed after one event.
     upstream = FakeStream(list(EVENTS))
-    relay = _relay_events(upstream)
+    usage = StreamUsage(forward_usage_chunk=False)
+    finished: list[bool] = []
+    relay = _relay_events(upstream, usage, lambda: finished.append(True))
     assert await anext(relay) == EVENTS[0]
     assert not upstream.closed
     await relay.aclose()  # what Starlette does when the client goes away
     assert upstream.closed  # -> the connection to the engine is released
+    assert finished == [True]  # usage is still recorded for the work done
+    assert usage.result() == (None, 1, "estimated")  # one content chunk seen, no report

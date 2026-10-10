@@ -114,7 +114,7 @@ Goal: **a correct streaming, OpenAI-compatible gateway with a backend abstractio
     - Expected result: exception handlers; upstream errors mapped (502/503/504); a mid-stream failure emits an SSE error event and closes cleanly.
     - Files: `src/relay/api/errors.py`
     - Verify: unit tests; the SDK raises the right `openai.APIError` subclass.
-- [ ] `[MUST]` **2.7 Token usage capture**
+- [x] `[MUST]` **2.7 Token usage capture** (done 2026-10-10)
     - Why: accounting (Day 3) needs prompt and completion tokens for both streaming and non-streaming requests.
     - Expected result: usage read from the response; for streams, request `stream_options.include_usage` from the backend, with a documented fallback if the engine does not support it.
     - Files: `src/relay/accounting/usage.py`
