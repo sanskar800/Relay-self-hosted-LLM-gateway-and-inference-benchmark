@@ -152,9 +152,9 @@ Goal: **every request is attributed to a tenant, limited and recorded.**
     - Expected result: `Authorization: Bearer rk_…`; SHA-256 hash lookup with a short in-memory TTL cache; 401 in OpenAI error format; admin CLI `relay-admin create-tenant / create-key` (shows the key once).
     - Files: `src/relay/auth/`, `src/relay/cli.py`
     - Verify: tests for valid, invalid and revoked keys; the raw key never appears in the DB or logs.
-- [ ] `[MUST]` **3.3 Per-tenant model policy**
+- [x] `[MUST]` **3.3 Per-tenant model policy** (done 2026-10-11)
     - Why: governance. Team A may use model X but not model Y, and has a per-request `max_tokens` cap.
-    - Expected result: allow-list and caps checked before routing; 403 if not allowed.
+    - Expected result: allow-list and caps checked before routing. ~~403 if not allowed~~ **Changed to 404 `model_not_found`, identical to an unknown model** (as OpenAI does), so tenants cannot discover which models exist; the reason is logged server-side. An omitted `max_tokens` gets the tenant's cap added, so the cap cannot be bypassed.
     - Files: `src/relay/auth/policy.py`
     - Verify: unit tests.
 - [ ] `[MUST]` **3.4 Redis token-bucket rate limiter (Lua)**

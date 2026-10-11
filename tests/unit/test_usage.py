@@ -2,12 +2,8 @@ import json
 
 import pytest
 
-from relay.accounting.usage import (
-    StreamUsage,
-    UsageRecord,
-    request_stream_usage,
-    usage_from_completion,
-)
+from relay.accounting.usage import StreamUsage, UsageRecord, usage_from_completion
+from relay.api.upstream import upstream_body
 from relay.backends.base import BackendResponse, BackendStreamError
 from tests.unit.fakes import FakeBackend, FakeStream, make_app, make_client, make_config
 
@@ -44,11 +40,11 @@ def test_usage_from_completion() -> None:
     assert usage_from_completion(b"not json") == (None, None, "missing")
 
 
-def test_request_stream_usage_adds_option_and_keeps_everything_else() -> None:
+def test_include_usage_is_added_and_everything_else_kept() -> None:
     body = json.dumps(
         {"model": "m", "stream": True, "seed": 7, "stream_options": {"x_custom": 1}}
     ).encode()
-    data = json.loads(request_stream_usage(body))
+    data = json.loads(upstream_body(body, include_usage=True, default_max_tokens=None))
     assert data["stream_options"] == {"x_custom": 1, "include_usage": True}
     assert data["seed"] == 7 and data["model"] == "m" and data["stream"] is True
 

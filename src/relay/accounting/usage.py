@@ -1,7 +1,8 @@
 """Token usage per request: read from the engine's own report, estimated only as a fallback.
 
 Streams: engines report usage only when asked (`stream_options.include_usage`), so Relay
-asks for it itself and removes the extra usage chunk if the client did not ask for it.
+asks for it itself (see api/upstream.py) and removes the extra usage chunk if the client
+did not ask for it.
 If no usage ever arrives (engine ignores the option, or the client disconnected first),
 completion tokens are estimated as the number of content chunks and labelled as such.
 """
@@ -42,18 +43,6 @@ def usage_from_completion(content: bytes) -> tuple[int | None, int | None, Usage
     if isinstance(prompt, int) and isinstance(completion, int):
         return prompt, completion, "engine"
     return None, None, "missing"
-
-
-def request_stream_usage(body: bytes) -> bytes:
-    """Ask the engine to report usage at the end of the stream.
-
-    The only change Relay ever makes to a client's request. Every other field is kept;
-    the JSON is re-serialised, so whitespace may differ from the client's bytes.
-    """
-    data = json.loads(body)
-    options = data.get("stream_options") or {}
-    data["stream_options"] = {**options, "include_usage": True}
-    return json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode()
 
 
 class StreamUsage:

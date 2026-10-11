@@ -1,12 +1,12 @@
-"""GET /v1/models and /v1/models/{id}: the public model names from the config."""
+"""GET /v1/models and /v1/models/{id}: the models the calling tenant may use."""
 
 from typing import Literal
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
-from relay.api.errors import model_not_found
 from relay.api.schemas import ErrorResponse
+from relay.auth.policy import model_not_found_error, visible_models
 
 router = APIRouter()
 
@@ -30,9 +30,9 @@ def _model(request: Request, model_id: str) -> Model:
 
 @router.get("/v1/models")
 async def list_models(request: Request) -> ModelList:
-    # Answered from config, not by asking backends: instant, stable, and filterable
-    # per tenant later.
-    return ModelList(data=[_model(request, m) for m in request.app.state.config.models])
+    # Answered from config and the tenant's allow-list, not by asking backends.
+    allowed = visible_models(request.state.principal, request.app.state.config)
+    return ModelList(data=[_model(request, m) for m in allowed])
 
 
 @router.get(
@@ -40,7 +40,8 @@ async def list_models(request: Request) -> ModelList:
     response_model=Model,
     responses={404: {"model": ErrorResponse}},
 )
-async def retrieve_model(model_id: str, request: Request) -> Model | Response:
-    if model_id not in request.app.state.config.models:
-        return model_not_found(model_id)
+async def retrieve_model(model_id: str, request: Request) -> Model:
+    # A model the tenant may not use is reported as not found (same as OpenAI).
+    if model_id not in visible_models(request.state.principal, request.app.state.config):
+        raise model_not_found_error(model_id)
     return _model(request, model_id)

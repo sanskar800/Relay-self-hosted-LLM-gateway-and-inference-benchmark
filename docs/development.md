@@ -205,6 +205,11 @@ uv run relay-admin revoke-key rk_8f3aZ                     # by prefix or key id
 - **Startup:** Relay opens its Postgres pool at startup and **refuses to start** if Postgres is unreachable.
 - **Tenants created on 2026-10-11 (local DB):** `support-bot` and `batch-summariser` (values from `docs/brief.md`) and `dev` (generous limits, for contract tests). The `dev` key is in `.env` as `RELAY_TEST_API_KEY`; contract tests read it from the environment first, then `.env`. After `make db-reset`, recreate the tenant and key.
 
+### Tenant policy (from the `tenants` row)
+- **Model allow-list:** a model must be configured **and** in the tenant's `allowed_models`. A forbidden model gets the **same 404 `model_not_found`** as a nonexistent one (as OpenAI does), so tenants cannot probe which models exist. The reason is logged: `relay.policy tenant X requested model 'Y', which is not in its allow-list (answered 404)`. `/v1/models` lists only the tenant's models.
+- **`max_tokens` cap:** `max_tokens`/`max_completion_tokens` above the tenant's cap → 400 naming the field. If the client sends neither, Relay **adds `max_tokens` = cap**, so omitting the field cannot bypass the cap. Verified 2026-10-11: a tenant capped at 5 omitting `max_tokens` got exactly 5 completion tokens (`finish_reason: length`).
+- **What Relay changes in a request** (`src/relay/api/upstream.py`): nothing, except adding `stream_options.include_usage` on streams (accounting) and the default `max_tokens` above (policy). When either applies, the JSON is re-serialised once.
+
 ### Request limits (`limits:` in `config/relay.yaml`)
 | Limit | Default | Response |
 |---|---|---|
@@ -213,12 +218,12 @@ uv run relay-admin revoke-key rk_8f3aZ                     # by prefix or key id
 | `max_tokens` (ceiling for `max_tokens` / `max_completion_tokens`) | 4096 | 400, `param` = the field |
 
 - The body limit is an ASGI middleware enforced **while the body is received**. If `Content-Length` is too big, Relay answers 413 before reading anything (curl with `Expect: 100-continue` then uploads 0 bytes). Without `Content-Length` (chunked) it counts bytes and stops once past the limit. A check inside the endpoint would be too late, because FastAPI reads the whole body first.
-- **Known gap:** the token ceiling applies when the client sends `max_tokens`. If it is omitted, the backend's context window bounds generation (4096 per llama.cpp slot). Whether to inject a default cap is a per-tenant policy decision (Day 3).
+- The global ceiling applies when the client sends `max_tokens`. If it is omitted, a tenant's own cap is added (see *Tenant policy*); for an uncapped tenant the backend's context window bounds generation (4096 per llama.cpp slot).
 
 ### Token usage (accounting input)
 - Every completed request produces a `UsageRecord` (model, backend, stream, status, prompt/completion tokens, `source`). Today it is logged as `INFO: relay.usage …`; the usage ledger replaces this sink later.
 - **Non-streaming:** read from the response's `usage`.
-- **Streaming:** if the client did not set `stream_options.include_usage`, Relay adds it (the **only** change Relay makes to a request; the JSON is then re-serialised, so whitespace may differ) and removes the engine's usage-only chunk (`choices: []`) before it reaches the client. If the client did set it, the request bytes and the usage chunk pass through unchanged.
+- **Streaming:** if the client did not set `stream_options.include_usage`, Relay adds it (one of the two documented changes Relay makes to a request, see *Tenant policy*; the JSON is then re-serialised, so whitespace may differ) and removes the engine's usage-only chunk (`choices: []`) before it reaches the client. If the client did set it, the request bytes and the usage chunk pass through unchanged.
 - **`source`:** `engine` = the engine's own count (exact). `estimated` = no usage chunk arrived (client disconnected, stream broke, or engine ignores the option): completion ≈ number of content chunks, prompt unknown. `missing` = nothing to go on.
 - Verified 2026-10-10 against llama.cpp: a streamed request without `include_usage` recorded the same counts the engine reported for the identical non-streamed request (35 prompt / 24 completion); a disconnect after 5 events recorded `completion=5, source='estimated'`.
 - `GET /v1/models` is answered from this file, not by asking backends.

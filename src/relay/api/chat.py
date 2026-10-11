@@ -8,15 +8,13 @@ import anyio
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import StreamingResponse
 
-from relay.accounting.usage import (
-    StreamUsage,
-    UsageRecord,
-    request_stream_usage,
-    usage_from_completion,
-)
-from relay.api.errors import backend_error_response, model_not_found, openai_error
+from relay.accounting.usage import StreamUsage, UsageRecord, usage_from_completion
+from relay.api.errors import backend_error_response, openai_error
 from relay.api.limits import check_request_limits
 from relay.api.schemas import ChatCompletionRequest, ErrorResponse
+from relay.api.upstream import upstream_body
+from relay.auth.keys import Principal
+from relay.auth.policy import check_max_tokens, check_model, default_max_tokens
 from relay.backends.base import (
     Backend,
     BackendHTTPError,
@@ -41,30 +39,37 @@ SSE_HEADERS = {
 )
 async def chat_completions(payload: ChatCompletionRequest, request: Request) -> Response:
     # `payload` is validated (invalid -> 400 via the error handler). The backend receives
-    # the client's ORIGINAL bytes, except that streams may get include_usage added.
+    # the client's ORIGINAL bytes apart from the additions documented in upstream.py.
     body = await request.body()
-    if limit_error := check_request_limits(payload, request.app.state.config.limits):
+    config = request.app.state.config
+    principal: Principal = request.state.principal
+    if limit_error := check_request_limits(payload, config.limits):
         return limit_error
-    route = request.app.state.config.models.get(payload.model)
-    if route is None:
-        return model_not_found(payload.model)
+    # Tenant policy: unknown and forbidden models get the same 404; then the token cap.
+    check_model(payload.model, principal, config)
+    check_max_tokens(payload, principal)
+
     # First backend in preference order (fallback down the list comes with routing).
-    backend: Backend = request.app.state.backends[route.backends[0]]
+    backend: Backend = request.app.state.backends[config.models[payload.model].backends[0]]
     sink: Callable[[UsageRecord], None] = request.app.state.usage_sink
 
     def record(status: int, usage: tuple) -> None:
         sink(UsageRecord(payload.model, backend.name, payload.stream, status, *usage))
 
+    options = payload.stream_options
+    client_wants_usage = bool(options and options.include_usage)
+    outgoing = upstream_body(
+        body,
+        include_usage=payload.stream and not client_wants_usage,
+        default_max_tokens=default_max_tokens(payload, principal),
+    )
     try:
         if payload.stream:
-            options = payload.stream_options
-            client_wants_usage = bool(options and options.include_usage)
-            upstream_body = body if client_wants_usage else request_stream_usage(body)
             # Phase 1: nothing has been sent to the client yet, so a failure here can
             # still be an ordinary HTTP error response.
-            upstream = await backend.stream(upstream_body)
+            upstream = await backend.stream(outgoing)
         else:
-            result = await backend.chat(body)
+            result = await backend.chat(outgoing)
             record(result.status_code, usage_from_completion(result.content))
             return Response(result.content, result.status_code, media_type=result.content_type)
     except BackendHTTPError as exc:
