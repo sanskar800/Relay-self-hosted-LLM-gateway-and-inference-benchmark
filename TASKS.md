@@ -172,7 +172,7 @@ Goal: **every request is attributed to a tenant, limited and recorded.**
     - Expected result: one usage event per request (tenant, key ID, model, backend, prompt/completion tokens, TTFT, duration, status, estimated £); bounded `asyncio.Queue` and a batch writer task; buffering when Postgres is down; dropped events counted.
     - Files: `src/relay/accounting/ledger.py`, `config/pricing.yaml`
     - Verify: after N requests, `SELECT count(*)` equals N; Postgres-down test shows requests still succeed.
-- [ ] `[SHOULD]` **3.7 Usage report query**
+- [x] `[SHOULD]` **3.7 Usage report query** (done 2026-10-11)
     - Expected result: SQL view `usage_daily` (tenant, day, tokens, £) and `relay-admin usage` CLI.
     - Verify: matches what the test traffic generated.
 - [ ] `[OPTIONAL]` **3.8 Exact-match response cache** (temperature = 0 only)

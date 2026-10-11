@@ -226,7 +226,8 @@ uv run relay-admin revoke-key rk_8f3aZ                     # by prefix or key id
 - **Postgres down:** the batch is retried with backoff (1 s, 2 s, … up to 30 s) while the queue absorbs new events; each failed attempt logs `relay.ledger usage ledger: write of N events failed …`. **Queue full:** new events are dropped and counted (`dropped`), with a warning at the first drop and every 1,000. **Bad rows** (constraint violations) are retried one by one; only the bad ones are dropped (`rejected`). **Shutdown:** queued and in-flight events are flushed for up to 5 s.
 - Verified 2026-10-11 against a running Relay: 5 requests → 5 rows; with Postgres stopped ~10 s, 3 requests still returned 200, three write failures were logged, and all rows appeared after the restart. asyncpg also logs its own `Failed to restore the pool connection floor` tracebacks during an outage; they are expected.
 - **`cost_gbp` is NULL for now:** `config/pricing.yaml` rates are `null` (TBD) until the benchmark measures tokens/s; then £/1M = GPU £/h ÷ (tokens/s × 3600) × 1,000,000. No placeholder price is used.
-- Inspect: `make db-shell`, then e.g. `SELECT tenant_id, count(*), sum(prompt_tokens + completion_tokens) FROM usage_events GROUP BY 1;`
+- **Daily report:** `uv run relay-admin usage [tenant] [--days 7]` reads the view **`usage_daily`** (tenant × UTC day × model: requests, failed, prompt/completion/total tokens, `cost_gbp`). The view also counts `requests_without_exact_usage` and `unpriced_requests`, so a sum never looks more complete than it is; the CLI shows "TBD" instead of £0 while rates are unknown, and marks partial sums with `*`.
+- **Adding the view to an existing database:** `make db-apply` runs `initdb/002_usage_daily.sql` (`CREATE OR REPLACE VIEW`, safe to repeat) without the data loss of `make db-reset`. Fresh databases get it automatically.
 
 ### Request limits (`limits:` in `config/relay.yaml`)
 | Limit | Default | Response |

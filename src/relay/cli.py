@@ -5,6 +5,7 @@
     relay-admin create-key support-bot --name laptop     # prints the key ONCE
     relay-admin list-keys [support-bot]                   # prefixes only, never keys
     relay-admin revoke-key rk_8f3aZ                      # by prefix or key id
+    relay-admin usage [support-bot] [--days 7]            # daily usage (view usage_daily)
 """
 
 import argparse
@@ -88,6 +89,53 @@ async def revoke_key(conn: asyncpg.Connection, args: argparse.Namespace) -> None
     )
 
 
+USAGE_SQL = """
+SELECT day, tenant_id, model, requests, failed_requests, prompt_tokens, completion_tokens,
+       total_tokens, requests_without_exact_usage, cost_gbp, unpriced_requests
+FROM usage_daily
+WHERE day > (now() AT TIME ZONE 'UTC')::date - $1::int
+  AND ($2::text IS NULL OR tenant_id = $2)
+ORDER BY day, tenant_id, model
+"""
+
+
+def format_usage(rows: list) -> str:
+    header = (
+        f"{'day (UTC)':<11} {'tenant':<18} {'model':<24} {'requests':>8} {'failed':>6}"
+        f" {'prompt':>9} {'completion':>10} {'total':>9} {'GBP (est.)':>10}"
+    )
+    lines = [header, "-" * len(header)]
+    notes: list[str] = []
+    for r in rows:
+        if r["unpriced_requests"] == r["requests"]:
+            cost = "TBD"
+        else:
+            cost = f"{r['cost_gbp']:.4f}"
+            if r["unpriced_requests"]:
+                cost += "*"
+                notes.append(f"* {r['tenant_id']} {r['day']}: {r['unpriced_requests']} unpriced")
+        if r["requests_without_exact_usage"]:
+            notes.append(
+                f"{r['tenant_id']} {r['day']}: {r['requests_without_exact_usage']} requests"
+                " with estimated or missing usage (token totals are a lower bound)"
+            )
+        lines.append(
+            f"{r['day']!s:<11} {r['tenant_id']:<18} {r['model']:<24} {r['requests']:>8}"
+            f" {r['failed_requests']:>6} {r['prompt_tokens']:>9} {r['completion_tokens']:>10}"
+            f" {r['total_tokens']:>9} {cost:>10}"
+        )
+    if not rows:
+        lines.append("no usage in this period")
+    if any(r["unpriced_requests"] for r in rows):
+        notes.append("GBP is TBD until benchmark-based rates are set in config/pricing.yaml")
+    return "\n".join(lines + ([""] + notes if notes else []))
+
+
+async def usage(conn: asyncpg.Connection, args: argparse.Namespace) -> None:
+    rows = await conn.fetch(USAGE_SQL, args.days, args.tenant)
+    print(format_usage(rows))
+
+
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="relay-admin", description="Manage Relay tenants and keys.")
     sub = p.add_subparsers(dest="command", required=True)
@@ -113,6 +161,11 @@ def parser() -> argparse.ArgumentParser:
     r = sub.add_parser("revoke-key", help="revoke a key by prefix or id")
     r.add_argument("key")
     r.set_defaults(handler=revoke_key)
+
+    u = sub.add_parser("usage", help="daily usage per tenant and model")
+    u.add_argument("tenant", nargs="?")
+    u.add_argument("--days", type=int, default=7, help="how many days back (default 7)")
+    u.set_defaults(handler=usage)
     return p
 
 
