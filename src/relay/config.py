@@ -19,6 +19,9 @@ class Settings(BaseSettings):
 
     # Env var is RELAY_CONFIG (an explicit alias, not RELAY_CONFIG_PATH).
     config_path: Path = Field(default=Path("config/relay.yaml"), validation_alias="RELAY_CONFIG")
+    # Defaults match the local Docker Compose stack (see .env.example).
+    database_url: str = "postgresql://relay:relay@127.0.0.1:5433/relay"
+    redis_url: str = "redis://127.0.0.1:6379/0"
 
 
 class _Strict(BaseModel):

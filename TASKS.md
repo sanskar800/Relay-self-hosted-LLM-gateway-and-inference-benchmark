@@ -142,7 +142,7 @@ Goal: **a correct streaming, OpenAI-compatible gateway with a backend abstractio
 
 Goal: **every request is attributed to a tenant, limited and recorded.**
 
-- [ ] `[MUST]` **3.1 PostgreSQL + Redis in Compose; schema**
+- [x] `[MUST]` **3.1 PostgreSQL + Redis in Compose; schema** (done 2026-10-11; Postgres on host port 5433)
     - Why: Postgres is the durable ledger and key store; Redis is the shared rate-limit state.
     - Expected result: services with health checks; `deploy/compose/initdb/001_schema.sql` (tables `tenants`, `api_keys(key_hash, tenant_id, …)`, `usage_events`). Plain SQL, no migration framework (deliberate simplicity).
     - Files: `deploy/compose/`, `src/relay/accounting/db.py`

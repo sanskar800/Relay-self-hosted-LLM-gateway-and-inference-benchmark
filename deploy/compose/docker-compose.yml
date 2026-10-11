@@ -75,3 +75,42 @@ services:
       - --n-gpu-layers
       - "99"
       - --metrics
+
+  # Durable store: tenants, API keys (hashed) and the usage ledger.
+  postgres:
+    image: postgres:18.6-alpine
+    environment:
+      # Local development credentials only; the port is bound to loopback.
+      POSTGRES_USER: relay
+      POSTGRES_PASSWORD: relay
+      POSTGRES_DB: relay
+    ports:
+      # 5433 on the host: 5432 may already be taken by a natively installed PostgreSQL.
+      - "127.0.0.1:5433:5432"
+    volumes:
+      # PostgreSQL 18 images keep data under /var/lib/postgresql (versioned subdirectory).
+      - pgdata:/var/lib/postgresql
+      # Runs only when the data volume is empty. After schema edits: `make db-reset`.
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U relay -d relay"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # Shared rate-limit counters. Short-lived by design, so no persistence.
+  redis:
+    image: redis:8.10.2-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  pgdata:

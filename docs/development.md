@@ -103,8 +103,10 @@ uv run ruff format .       # format (CI runs `ruff format --check .`)
 | Variable | Purpose | Default |
 |---|---|---|
 | `RELAY_CONFIG` | Path to backends/models YAML | `config/relay.yaml` |
-| `RELAY_REDIS_URL` | Rate-limit store | `redis://localhost:6379/0` |
-| `RELAY_DATABASE_URL` | Usage ledger | `postgresql://relay:relay@localhost:5432/relay` |
+| `RELAY_REDIS_URL` | Rate-limit store | `redis://127.0.0.1:6379/0` |
+| `RELAY_DATABASE_URL` | Tenants, API keys, usage ledger | `postgresql://relay:relay@127.0.0.1:5433/relay` (host port **5433**) |
+
+`.env` (git-ignored) is created from `.env.example`: `cp .env.example .env`. The database credentials are **local development values** (loopback-bound container, used nowhere else); a real deployment would take them from a secret store and give Redis a password.
 | `HF_TOKEN` | Only for gated Hugging Face models (not needed for Qwen2.5) | unset |
 
 ## 5. Models
@@ -140,7 +142,16 @@ Both ports are bound to **127.0.0.1**: llama.cpp has no authentication (its log 
 
 **Confirming GPU use** (2026-10-08; observations, not benchmarks): VRAM 99 → 1,412 MiB after `make up-gpu` (1.5B Q4_K_M + KV cache); `--list-devices` shows `CUDA0: NVIDIA GeForce RTX 4050 Laptop GPU`; utilisation ~90% during a 200-token generation. llama.cpp's default log level does not print offload details, so use these checks instead.
 
-*(Redis, Postgres, Prometheus, Grafana and Jaeger are added on Days 3–4.)*
+| `postgres` | **5433** | `postgres:18.6-alpine` | Tenants, hashed API keys, usage ledger. Data in volume `relay_pgdata` (survives `make down`). Schema: `deploy/compose/initdb/001_schema.sql` |
+| `redis` | 6379 | `redis:8.10.2-alpine` | Rate-limit counters. **No persistence** (`--save "" --appendonly no`): counters are short-lived by design |
+
+*(Prometheus, Grafana and Jaeger are added on Day 4.)*
+
+**Database helpers:** `make db-shell` (psql), `make redis-cli`, and `make db-reset`, which **deletes all Relay database data** and re-creates the schema.
+
+**Why host port 5433:** this machine also has a native PostgreSQL 18 Windows service (`postgresql-x64-18`) listening on 5432. It is left untouched; Relay's container uses 5433.
+
+**Schema changes need `make db-reset`.** The postgres image runs `initdb/*.sql` **only when its data volume is empty**. Editing `001_schema.sql` later changes nothing until the volume is recreated. This is the trade-off of using plain SQL instead of a migration framework; acceptable here because there is no production data. (PostgreSQL 18 images keep data under `/var/lib/postgresql/18/docker`, so the volume is mounted at `/var/lib/postgresql`, not the older `/var/lib/postgresql/data`.)
 
 **Finding llama.cpp image tags:** the registry lists 12,000+ tags oldest-first in pages of 1000; GitHub release names (`v0.6.0`) differ from image tags (`server-bNNNNN`). Variants include `server-cuda12` and `server-cuda13`.
 
@@ -211,7 +222,7 @@ Start `.venv/Scripts/uvicorn.exe` directly, not via `uv run`: killing the `uv ru
 |---|---|---|---|
 | Unit | `make test` | nothing: in-memory fakes | Relay's own logic, including real SDK → Relay → real HTTP backend → fake engine; ~2 s |
 | Contract | `make test-contract` | `make up` + `make run` | The **official OpenAI SDK** works against Relay unchanged |
-| Integration | *(Day 4)* | Compose services | Failure scenarios end to end |
+| Integration | `make test-integration` | `make up` (Postgres, Redis) | Schema rules, key lookup, ledger idempotency, Redis; failure scenarios on Day 4. Each DB test runs in a rolled-back transaction, so no data is left behind |
 
 - **Test doubles, two levels:** `tests/unit/fakes.py` has `FakeBackend`/`FakeStream` (the `Backend` protocol in memory: gateway logic with no HTTP). `tests/fake_engine.py` has `FakeEngine`, a scripted OpenAI-compatible server used as the httpx transport under the real backend; it mimics llama.cpp's stream (role chunk, token chunks, finish chunk, usage chunk **only when `include_usage` is requested**, `[DONE]`) and records the requests it receives.
 - **The OpenAI SDK runs in-process** in unit tests by passing the `TestClient` as `http_client` (`tests/unit/test_errors.py`, `test_end_to_end.py`), so exception classes and parsing are the SDK's own.

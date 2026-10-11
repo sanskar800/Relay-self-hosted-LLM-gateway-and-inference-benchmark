@@ -3,7 +3,7 @@
 
 COMPOSE = docker compose -f deploy/compose/docker-compose.yml
 
-.PHONY: help setup test lint format models models-all up up-gpu down ps logs run test-contract
+.PHONY: help setup test lint format models models-all up up-gpu down ps logs run test-contract test-integration db-shell redis-cli db-reset
 
 help:  ## List targets
 	@uv run python -c "import re; [print(f\"{m[0]:<12} {m[1]}\") for m in re.findall(r\"^([a-z-]+):.*## (.*)$$\", open(\"Makefile\").read(), re.M)]"
@@ -16,6 +16,9 @@ test:  ## Run unit tests (no model or Docker needed)
 
 test-contract:  ## OpenAI SDK contract tests (needs `make up` and `make run`)
 	uv run pytest -m contract -v
+
+test-integration:  ## Tests against the Compose services (needs `make up`)
+	uv run pytest -m integration -v
 
 lint:  ## Lint and check formatting
 	uv run ruff check .
@@ -48,3 +51,14 @@ logs:  ## Follow stack logs
 
 run:  ## Start Relay on http://localhost:8000 (auto-reload on code changes)
 	uv run uvicorn relay.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir src
+
+db-shell:  ## psql into Relay's Postgres
+	$(COMPOSE) exec postgres psql -U relay -d relay
+
+redis-cli:  ## redis-cli into Relay's Redis
+	$(COMPOSE) exec redis redis-cli
+
+db-reset:  ## DELETE Relay's Postgres data and re-create it from initdb/*.sql
+	$(COMPOSE) rm --stop --force postgres
+	docker volume rm --force relay_pgdata
+	$(COMPOSE) up -d --wait postgres
