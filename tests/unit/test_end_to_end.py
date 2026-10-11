@@ -4,12 +4,10 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 import openai
-from fastapi.testclient import TestClient
 
 from relay.accounting.usage import UsageRecord
-from relay.main import create_app
 from tests.fake_engine import FakeEngine
-from tests.unit.fakes import make_config
+from tests.unit.fakes import TEST_KEY, make_app, make_client, make_config
 
 MESSAGES = [{"role": "user", "content": "hi"}]
 
@@ -17,15 +15,15 @@ MESSAGES = [{"role": "user", "content": "hi"}]
 @contextmanager
 def stack(engine: FakeEngine) -> Iterator[tuple[openai.OpenAI, list[UsageRecord]]]:
     records: list[UsageRecord] = []
-    app = create_app(
+    app = make_app(
         config=make_config("m", "llamacpp-cpu"),
         transport=engine.transport(),
         usage_sink=records.append,
     )
-    with TestClient(app) as http:
+    with make_client(app) as http:
         yield (
             openai.OpenAI(
-                base_url="http://testserver/v1", api_key="x", http_client=http, max_retries=0
+                base_url="http://testserver/v1", api_key=TEST_KEY, http_client=http, max_retries=0
             ),
             records,
         )

@@ -10,9 +10,13 @@ import os
 import httpx
 import openai
 import pytest
+from dotenv import dotenv_values
 
 BASE_URL = os.environ.get("RELAY_TEST_BASE_URL", "http://localhost:8000/v1")
 MODEL = os.environ.get("RELAY_TEST_MODEL", "qwen2.5-1.5b-instruct")
+# A real Relay API key: from the environment (CI), else from the git-ignored .env.
+# Create one with: uv run relay-admin create-key dev --name contract-tests
+API_KEY = os.environ.get("RELAY_TEST_API_KEY") or dotenv_values(".env").get("RELAY_TEST_API_KEY")
 
 
 @pytest.fixture(scope="session")
@@ -28,10 +32,20 @@ def relay_up() -> None:
 
 
 @pytest.fixture
-def client(relay_up: None) -> openai.OpenAI:
+def api_key(relay_up: None) -> str:
+    if not API_KEY:
+        message = "no RELAY_TEST_API_KEY (env or .env); create one with relay-admin create-key"
+        if os.environ.get("RELAY_REQUIRE_STACK") == "1":
+            pytest.fail(message)
+        pytest.skip(message)
+    return API_KEY
+
+
+@pytest.fixture
+def client(api_key: str) -> openai.OpenAI:
     # max_retries=0: the SDK retries 5xx and timeouts by default, which would hide
-    # (and multiply) failures in a test. No auth yet, but the SDK requires some key.
-    return openai.OpenAI(base_url=BASE_URL, api_key="not-checked-yet", max_retries=0, timeout=60)
+    # (and multiply) failures in a test.
+    return openai.OpenAI(base_url=BASE_URL, api_key=api_key, max_retries=0, timeout=60)
 
 
 @pytest.fixture

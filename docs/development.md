@@ -188,6 +188,23 @@ make run    # Relay on http://localhost:8000, auto-reloads on changes in src/
 - **Validated at startup; unknown keys are rejected.** A typo stops Relay with a clear error, e.g. `model 'qwen2.5-1.5b-instruct' refers to undefined backends: ['llamacpp-cpuu']` (exit code 1).
 - Each backend must serve the model under its **public** name (llama.cpp `--alias`, vLLM `--served-model-name`), so Relay never has to rewrite `model`.
 
+### API keys and tenants
+Every `/v1/*` route requires `Authorization: Bearer rk_...` (`/healthz` does not). Swagger's **Authorize** button takes the key.
+
+```bash
+uv run relay-admin create-tenant support-bot --name "Support bot" \
+    --models qwen2.5-1.5b-instruct --rpm 60 --tpm 20000 --max-tokens 512
+uv run relay-admin create-key support-bot --name laptop    # prints the key ONCE
+uv run relay-admin list-keys [tenant]                      # prefixes only
+uv run relay-admin revoke-key rk_8f3aZ                     # by prefix or key id
+```
+
+- **Keys:** `rk_` + 43 URL-safe characters (256 random bits). Postgres stores only SHA-256(key) and an 8-character display prefix. A fast hash is right for random keys; slow hashes (bcrypt/argon2) are for guessable passwords and would cost ~100 ms per request. Verified 2026-10-11: the stored hash equals SHA-256 of the key, and a full table dump contains the raw key 0 times.
+- **Cache:** lookups are cached in memory for 30 s (unknown keys 5 s; at most 10,000 entries). **A revoked key keeps working for up to 30 s** (observed: still 200 right after revoking, 401 after 31 s).
+- **Errors:** missing key → 401 `missing_api_key`; unknown/revoked key or disabled tenant → 401 `invalid_api_key` (only the prefix is echoed); key store unreachable and key not cached → **503 (fails closed)**. A cached key keeps working while Postgres is down.
+- **Startup:** Relay opens its Postgres pool at startup and **refuses to start** if Postgres is unreachable.
+- **Tenants created on 2026-10-11 (local DB):** `support-bot` and `batch-summariser` (values from `docs/brief.md`) and `dev` (generous limits, for contract tests). The `dev` key is in `.env` as `RELAY_TEST_API_KEY`; contract tests read it from the environment first, then `.env`. After `make db-reset`, recreate the tenant and key.
+
 ### Request limits (`limits:` in `config/relay.yaml`)
 | Limit | Default | Response |
 |---|---|---|

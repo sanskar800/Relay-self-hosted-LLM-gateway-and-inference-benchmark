@@ -1,7 +1,6 @@
 import json
 
 import pytest
-from fastapi.testclient import TestClient
 
 from relay.accounting.usage import (
     StreamUsage,
@@ -10,8 +9,7 @@ from relay.accounting.usage import (
     usage_from_completion,
 )
 from relay.backends.base import BackendResponse, BackendStreamError
-from relay.main import create_app
-from tests.unit.fakes import FakeBackend, FakeStream, make_config
+from tests.unit.fakes import FakeBackend, FakeStream, make_app, make_client, make_config
 
 
 def sse(obj: dict) -> bytes:
@@ -91,12 +89,12 @@ REQUEST = {"model": "m", "messages": [{"role": "user", "content": "hi"}]}
 
 def run(backend: FakeBackend, raw: bytes | None = None, **extra) -> tuple[bytes, list[UsageRecord]]:
     records: list[UsageRecord] = []
-    app = create_app(
+    app = make_app(
         config=make_config("m", backend.name),
         backends={backend.name: backend},
         usage_sink=records.append,
     )
-    with TestClient(app) as client:
+    with make_client(app) as client:
         if raw is None:
             resp = client.post("/v1/chat/completions", json={**REQUEST, **extra})
         else:

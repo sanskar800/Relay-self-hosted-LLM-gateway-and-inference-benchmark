@@ -3,15 +3,18 @@
 import logging
 import time
 from collections.abc import AsyncIterator, Callable, Mapping
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 
 import httpx
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
+from relay.accounting.db import create_pool
 from relay.accounting.usage import UsageRecord
 from relay.api import chat, models
 from relay.api.errors import install_error_handlers
 from relay.api.limits import BodySizeLimitMiddleware
+from relay.auth.dependency import require_api_key
+from relay.auth.keys import CachedKeyStore, KeyStore, PostgresKeyStore
 from relay.backends import ENGINES, Backend
 from relay.config import RelayConfig, Settings, load_config
 
@@ -59,15 +62,18 @@ def create_app(
     backends: Mapping[str, Backend] | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
     usage_sink: Callable[[UsageRecord], None] = log_usage,
+    key_store: KeyStore | None = None,
 ) -> FastAPI:
     """Build the app.
 
     The config is loaded and validated here, at startup, so a bad file stops the process
     before it serves anything. Tests can pass a `config`, ready-made fake `backends`
-    (no HTTP at all), or a `transport` that replaces the network under real backends.
+    (no HTTP at all), or a `transport` that replaces the network under real backends,
+    and a `key_store` instead of Postgres.
     """
     configure_logging()
-    config = config or load_config((settings or Settings()).config_path)
+    settings = settings or Settings()
+    config = config or load_config(settings.config_path)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -79,17 +85,25 @@ def create_app(
         app.state.started_at = int(time.time())
         # Called once per completed request with its token usage.
         app.state.usage_sink = usage_sink
-        try:
-            yield
-        finally:
+        async with AsyncExitStack() as stack:
             for backend in app.state.backends.values():
-                await backend.aclose()
+                stack.push_async_callback(backend.aclose)
+            if key_store is None:
+                # Fail fast: a gateway that cannot authenticate anyone should not start.
+                pool = await create_pool(settings.database_url)
+                stack.push_async_callback(pool.close)
+                app.state.key_store = CachedKeyStore(PostgresKeyStore(pool))
+            else:
+                app.state.key_store = key_store
+            yield
 
     app = FastAPI(title="Relay", lifespan=lifespan)
     install_error_handlers(app)
     app.add_middleware(BodySizeLimitMiddleware, max_bytes=config.limits.max_body_bytes)
-    app.include_router(chat.router)
-    app.include_router(models.router)
+    # Every API route requires an API key; /healthz stays open for load balancers.
+    authenticated = [Depends(require_api_key)]
+    app.include_router(chat.router, dependencies=authenticated)
+    app.include_router(models.router, dependencies=authenticated)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

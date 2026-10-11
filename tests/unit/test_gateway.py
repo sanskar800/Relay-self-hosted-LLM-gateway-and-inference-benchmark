@@ -2,8 +2,6 @@
 
 import json
 
-from fastapi.testclient import TestClient
-
 from relay.backends.base import (
     BackendHTTPError,
     BackendResponse,
@@ -11,13 +9,13 @@ from relay.backends.base import (
     BackendTimeout,
     BackendUnavailable,
 )
-from tests.unit.fakes import FakeBackend, FakeStream, app_with_fake
+from tests.unit.fakes import FakeBackend, FakeStream, app_with_fake, make_client
 
 REQUEST = {"model": "m", "messages": [{"role": "user", "content": "hi"}]}
 
 
 def post(backend: FakeBackend, **extra) -> tuple[int, bytes]:
-    with TestClient(app_with_fake(backend)) as client:
+    with make_client(app_with_fake(backend)) as client:
         resp = client.post("/v1/chat/completions", json={**REQUEST, **extra})
         return resp.status_code, resp.content
 
@@ -61,6 +59,6 @@ def test_backend_errors_map_to_http_statuses() -> None:
 
 def test_backend_is_closed_on_shutdown() -> None:
     backend = FakeBackend()
-    with TestClient(app_with_fake(backend)):
+    with make_client(app_with_fake(backend)):
         assert not backend.closed
     assert backend.closed

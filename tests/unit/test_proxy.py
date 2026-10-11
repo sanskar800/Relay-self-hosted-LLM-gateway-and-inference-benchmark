@@ -4,7 +4,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.unit.fakes import app_with_transport
+from tests.unit.fakes import app_with_transport, make_client
 
 VALID = {"model": "m", "messages": [{"role": "user", "content": "hi"}]}
 
@@ -17,13 +17,13 @@ COMPLETION = {
 }
 
 
-def make_client(handler) -> TestClient:
+def proxy_client(handler) -> TestClient:
     app = app_with_transport(httpx.MockTransport(handler))
-    return TestClient(app)
+    return make_client(app)
 
 
 def test_healthz() -> None:
-    with make_client(lambda r: httpx.Response(500)) as client:
+    with proxy_client(lambda r: httpx.Response(500)) as client:
         assert client.get("/healthz").json() == {"status": "ok"}
 
 
@@ -35,7 +35,7 @@ def test_forwards_body_unchanged_and_returns_backend_response() -> None:
         return httpx.Response(200, json=COMPLETION)
 
     body = {"model": "m", "messages": [{"role": "user", "content": "hi"}], "seed": 7}
-    with make_client(backend) as client:
+    with proxy_client(backend) as client:
         resp = client.post("/v1/chat/completions", json=body)
 
     assert resp.status_code == 200
@@ -45,7 +45,7 @@ def test_forwards_body_unchanged_and_returns_backend_response() -> None:
 
 
 def test_backend_error_status_is_passed_through() -> None:
-    with make_client(lambda r: httpx.Response(400, json={"error": {"message": "bad"}})) as client:
+    with proxy_client(lambda r: httpx.Response(400, json={"error": {"message": "bad"}})) as client:
         resp = client.post("/v1/chat/completions", json=VALID)
     assert resp.status_code == 400
     assert resp.json()["error"]["message"] == "bad"
@@ -59,7 +59,7 @@ def test_backend_failure_becomes_openai_error(exc: Exception, status: int) -> No
     def backend(request: httpx.Request) -> httpx.Response:
         raise exc
 
-    with make_client(backend) as client:
+    with proxy_client(backend) as client:
         resp = client.post("/v1/chat/completions", json=VALID)
     assert resp.status_code == status
     assert set(resp.json()["error"]) == {"message", "type", "param", "code"}
@@ -70,7 +70,7 @@ def test_invalid_body_is_rejected_before_backend(raw: bytes) -> None:
     def backend(request: httpx.Request) -> httpx.Response:
         raise AssertionError("backend must not be called")
 
-    with make_client(backend) as client:
+    with proxy_client(backend) as client:
         resp = client.post(
             "/v1/chat/completions", content=raw, headers={"Content-Type": "application/json"}
         )

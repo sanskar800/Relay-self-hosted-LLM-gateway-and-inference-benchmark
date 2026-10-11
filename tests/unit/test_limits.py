@@ -7,8 +7,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from relay.config import LimitsConfig, RelayConfig
-from relay.main import create_app
-from tests.unit.fakes import FakeBackend
+from tests.unit.fakes import TEST_KEY, FakeBackend, make_app, make_client
 
 LIMITS = {"max_body_bytes": 300, "max_messages": 3, "max_tokens": 100}
 MESSAGES = [{"role": "user", "content": "hi"}]
@@ -22,7 +21,7 @@ def client_with(backend: FakeBackend) -> TestClient:
             "limits": LIMITS,
         }
     )
-    return TestClient(create_app(config=config, backends={backend.name: backend}))
+    return make_client(make_app(config=config, backends={backend.name: backend}))
 
 
 def post(backend: FakeBackend, **kwargs):
@@ -92,7 +91,7 @@ def test_limits_have_safe_defaults_and_reject_nonsense() -> None:
 def test_sdk_sees_413_as_a_status_error() -> None:
     with client_with(FakeBackend()) as http:
         sdk = openai.OpenAI(
-            base_url="http://testserver/v1", api_key="x", http_client=http, max_retries=0
+            base_url="http://testserver/v1", api_key=TEST_KEY, http_client=http, max_retries=0
         )
         with pytest.raises(openai.APIStatusError) as excinfo:
             sdk.chat.completions.create(

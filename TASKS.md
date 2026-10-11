@@ -147,7 +147,7 @@ Goal: **every request is attributed to a tenant, limited and recorded.**
     - Expected result: services with health checks; `deploy/compose/initdb/001_schema.sql` (tables `tenants`, `api_keys(key_hash, tenant_id, …)`, `usage_events`). Plain SQL, no migration framework (deliberate simplicity).
     - Files: `deploy/compose/`, `src/relay/accounting/db.py`
     - Verify: `psql` shows the tables; `redis-cli ping` returns PONG.
-- [ ] `[MUST]` **3.2 API keys and tenant identification**
+- [x] `[MUST]` **3.2 API keys and tenant identification** (done 2026-10-11)
     - Why: no identity means no quotas and no cost attribution.
     - Expected result: `Authorization: Bearer rk_…`; SHA-256 hash lookup with a short in-memory TTL cache; 401 in OpenAI error format; admin CLI `relay-admin create-tenant / create-key` (shows the key once).
     - Files: `src/relay/auth/`, `src/relay/cli.py`

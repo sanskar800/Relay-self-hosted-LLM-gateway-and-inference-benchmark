@@ -124,16 +124,22 @@ The detailed plan is in [TASKS.md](TASKS.md).
 
 ## Quick start (local development)
 
-What works today: the OpenAI SDK → Relay → llama.cpp, **streaming and non-streaming**, `/v1/models`, OpenAI-format errors and request limits. No API keys yet. The full setup guide is [docs/development.md](docs/development.md).
+What works today: the OpenAI SDK → Relay → llama.cpp, **streaming and non-streaming**, API keys per tenant, `/v1/models`, OpenAI-format errors and request limits. The full setup guide is [docs/development.md](docs/development.md).
 
-**Prerequisites:** Docker Desktop, [uv](https://docs.astral.sh/uv/), GNU Make, ~2 GB free disk for models. Ports 8000 (Relay) and 8081 (llama.cpp) must be free.
+**Prerequisites:** Docker Desktop, [uv](https://docs.astral.sh/uv/), GNU Make, ~2 GB free disk for models. Ports 8000 (Relay), 8081 (llama.cpp), 5433 (Postgres) and 6379 (Redis) must be free.
 
 ```bash
 git clone https://github.com/sanskar800/Relay-self-hosted-LLM-gateway-and-inference-benchmark.git relay
 cd relay
+cp .env.example .env   # local settings (git-ignored)
 make setup     # Python 3.12 venv + exact dependencies from uv.lock
 make models    # pinned Qwen2.5 GGUF models (~1.6 GB) to ~/models, SHA-256 verified
-make up        # llama.cpp server on :8081, waits until healthy
+make up        # llama.cpp (:8081), Postgres (:5433), Redis (:6379); waits until healthy
+
+# Create a tenant and an API key (the key is printed once; keep it)
+uv run relay-admin create-tenant demo --models qwen2.5-1.5b-instruct --rpm 60 --tpm 20000
+uv run relay-admin create-key demo --name quickstart
+
 make run       # Relay on http://localhost:8000 (leave running; use a second terminal below)
 ```
 
@@ -142,7 +148,7 @@ Call it with the **official OpenAI SDK**, changing only `base_url` (run with `uv
 ```python
 from openai import OpenAI
 
-client = OpenAI(base_url="http://localhost:8000/v1", api_key="unused-for-now")
+client = OpenAI(base_url="http://localhost:8000/v1", api_key="rk_...")  # your key
 reply = client.chat.completions.create(
     model="qwen2.5-1.5b-instruct",
     messages=[{"role": "user", "content": "In one sentence, what is an API gateway?"}],
@@ -154,19 +160,20 @@ print(reply.choices[0].message.content, reply.usage)
 Or with `curl` (bash) / PowerShell:
 
 ```bash
-curl http://localhost:8000/v1/chat/completions -H "Content-Type: application/json" \
+curl http://localhost:8000/v1/chat/completions -H "Authorization: Bearer $RELAY_API_KEY" -H "Content-Type: application/json" \
   -d '{"model": "qwen2.5-1.5b-instruct", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 30}'
 ```
 
 ```powershell
 $body = '{"model":"qwen2.5-1.5b-instruct","messages":[{"role":"user","content":"Hello"}],"max_tokens":30}'
-Invoke-RestMethod http://localhost:8000/v1/chat/completions -Method Post -ContentType "application/json" -Body $body
+Invoke-RestMethod http://localhost:8000/v1/chat/completions -Method Post -ContentType "application/json" -Body $body -Headers @{ Authorization = "Bearer rk_..." }
 ```
 
 ```bash
-make test            # unit tests (no model or Docker needed)
-make test-contract   # OpenAI SDK contract tests against the running stack
-make down            # stop llama.cpp
+make test              # unit tests (no model or Docker needed)
+make test-integration  # tests against Postgres and Redis
+make test-contract     # OpenAI SDK contract tests (needs RELAY_TEST_API_KEY in .env)
+make down              # stop the stack
 ```
 
 ## Repository layout (target)

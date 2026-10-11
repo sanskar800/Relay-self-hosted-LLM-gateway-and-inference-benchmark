@@ -3,6 +3,8 @@
 import openai
 import pytest
 
+from tests.contract.conftest import BASE_URL
+
 pytestmark = pytest.mark.contract
 
 
@@ -95,3 +97,10 @@ def test_unknown_model_raises_not_found(client: openai.OpenAI) -> None:
             model="no-such-model", messages=[{"role": "user", "content": "hi"}], max_tokens=5
         )
     assert excinfo.value.code == "model_not_found"
+
+
+def test_wrong_api_key_raises_authentication_error(relay_up: None) -> None:
+    bad = openai.OpenAI(base_url=BASE_URL, api_key="rk_not-a-real-key", max_retries=0)
+    with pytest.raises(openai.AuthenticationError) as excinfo:
+        bad.models.list()
+    assert excinfo.value.code == "invalid_api_key"

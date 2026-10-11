@@ -30,10 +30,39 @@ def openai_error(
     error_type: str,
     param: str | None = None,
     code: str | None = None,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     detail = ErrorDetail(message=message, type=error_type, param=param, code=code)
     body = ErrorResponse(error=detail)
-    return JSONResponse(status_code=status_code, content=body.model_dump())
+    return JSONResponse(status_code=status_code, content=body.model_dump(), headers=headers)
+
+
+class APIError(Exception):
+    """Raise anywhere (e.g. in a dependency) to answer with an OpenAI-format error."""
+
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        error_type: str,
+        *,
+        code: str | None = None,
+        param: str | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.message = message
+        self.error_type = error_type
+        self.code = code
+        self.param = param
+        self.headers = headers
+
+
+async def _api_error(request: Request, exc: APIError) -> JSONResponse:
+    return openai_error(
+        exc.status_code, exc.message, exc.error_type, exc.param, exc.code, exc.headers
+    )
 
 
 async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -89,6 +118,7 @@ async def _unhandled_error(request: Request, exc: Exception) -> JSONResponse:
 
 def install_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(RequestValidationError, _validation_error)
+    app.add_exception_handler(APIError, _api_error)
     app.add_exception_handler(StarletteHTTPException, _http_error)
     app.add_exception_handler(Exception, _unhandled_error)
 

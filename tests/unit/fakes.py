@@ -4,7 +4,9 @@ from collections.abc import AsyncIterator
 
 import httpx
 from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
+from relay.auth.keys import Principal, hash_key
 from relay.backends.base import BackendError, BackendResponse
 from relay.config import RelayConfig
 from relay.main import create_app
@@ -67,6 +69,48 @@ class FakeBackend:
         self.closed = True
 
 
+TEST_KEY = "rk_unit-test-key"
+AUTH_HEADERS = {"Authorization": f"Bearer {TEST_KEY}"}
+TEST_MODELS = frozenset({"m", "qwen-1.5b", "qwen-0.5b", "Qwen/Qwen2.5-1.5B-Instruct"})
+
+
+def make_principal(**overrides) -> Principal:
+    fields = {
+        "tenant_id": "team-test",
+        "key_id": "00000000-0000-0000-0000-000000000001",
+        "key_prefix": TEST_KEY[:8],
+        "allowed_models": TEST_MODELS,
+        "requests_per_minute": 1000,
+        "tokens_per_minute": 1_000_000,
+        "max_tokens_cap": None,
+    }
+    return Principal(**{**fields, **overrides})
+
+
+class StaticKeyStore:
+    """Key store with fixed keys, in memory. Counts lookups to observe caching."""
+
+    def __init__(self, keys: dict[str, Principal] | None = None) -> None:
+        keys = keys if keys is not None else {TEST_KEY: make_principal()}
+        self._by_hash = {hash_key(raw): p for raw, p in keys.items()}
+        self.lookups = 0
+
+    async def lookup(self, key_hash: bytes) -> Principal | None:
+        self.lookups += 1
+        return self._by_hash.get(key_hash)
+
+
+def make_app(**kwargs) -> FastAPI:
+    """create_app with an in-memory key store that accepts TEST_KEY (no Postgres)."""
+    kwargs.setdefault("key_store", StaticKeyStore())
+    return create_app(**kwargs)
+
+
+def make_client(app: FastAPI, **kwargs) -> TestClient:
+    """TestClient that sends TEST_KEY on every request."""
+    return TestClient(app, headers=AUTH_HEADERS, **kwargs)
+
+
 def make_config(model: str = "m", backend: str = "b1", url: str = "http://engine") -> RelayConfig:
     """Smallest valid routing config: one model served by one llama.cpp backend."""
     return RelayConfig.model_validate(
@@ -79,9 +123,9 @@ def make_config(model: str = "m", backend: str = "b1", url: str = "http://engine
 
 def app_with_fake(backend: "FakeBackend", model: str = "m") -> FastAPI:
     """Gateway with an in-memory backend: no HTTP below Relay."""
-    return create_app(config=make_config(model, backend.name), backends={backend.name: backend})
+    return make_app(config=make_config(model, backend.name), backends={backend.name: backend})
 
 
 def app_with_transport(transport: httpx.AsyncBaseTransport, model: str = "m") -> FastAPI:
     """Gateway with the real HTTP backend, whose network is replaced by `transport`."""
-    return create_app(config=make_config(model), transport=transport)
+    return make_app(config=make_config(model), transport=transport)

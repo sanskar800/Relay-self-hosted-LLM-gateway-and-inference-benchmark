@@ -3,8 +3,7 @@
 from fastapi.testclient import TestClient
 
 from relay.config import RelayConfig
-from relay.main import create_app
-from tests.unit.fakes import FakeBackend
+from tests.unit.fakes import FakeBackend, make_app, make_client
 
 CONFIG = RelayConfig.model_validate(
     {
@@ -20,9 +19,9 @@ CONFIG = RelayConfig.model_validate(
 )
 
 
-def make_client() -> tuple[TestClient, dict[str, FakeBackend]]:
+def routed_client() -> tuple[TestClient, dict[str, FakeBackend]]:
     fakes = {"gpu": FakeBackend("gpu"), "cpu": FakeBackend("cpu")}
-    return TestClient(create_app(config=CONFIG, backends=fakes)), fakes
+    return make_client(make_app(config=CONFIG, backends=fakes)), fakes
 
 
 def chat(client: TestClient, model: str):
@@ -31,7 +30,7 @@ def chat(client: TestClient, model: str):
 
 
 def test_request_goes_to_first_backend_of_its_model() -> None:
-    client, fakes = make_client()
+    client, fakes = routed_client()
     with client:
         assert chat(client, "qwen-1.5b").status_code == 200
         assert chat(client, "qwen-0.5b").status_code == 200
@@ -40,7 +39,7 @@ def test_request_goes_to_first_backend_of_its_model() -> None:
 
 
 def test_unknown_model_is_404_and_reaches_no_backend() -> None:
-    client, fakes = make_client()
+    client, fakes = routed_client()
     with client:
         resp = chat(client, "gpt-4o")
     assert resp.status_code == 404
@@ -52,7 +51,7 @@ def test_unknown_model_is_404_and_reaches_no_backend() -> None:
 
 
 def test_list_models_in_openai_format() -> None:
-    client, _ = make_client()
+    client, _ = routed_client()
     with client:
         body = client.get("/v1/models").json()
     assert body["object"] == "list"
@@ -63,7 +62,7 @@ def test_list_models_in_openai_format() -> None:
 
 
 def test_retrieve_model_and_404() -> None:
-    client, _ = make_client()
+    client, _ = routed_client()
     with client:
         assert client.get("/v1/models/qwen-0.5b").json()["owned_by"] == "relay"
         missing = client.get("/v1/models/nope")
@@ -78,5 +77,5 @@ def test_model_ids_containing_slashes_can_be_retrieved() -> None:
             "models": {"Qwen/Qwen2.5-1.5B-Instruct": {"backends": ["b"]}},
         }
     )
-    with TestClient(create_app(config=config, backends={"b": FakeBackend("b")})) as client:
+    with make_client(make_app(config=config, backends={"b": FakeBackend("b")})) as client:
         assert client.get("/v1/models/Qwen/Qwen2.5-1.5B-Instruct").status_code == 200

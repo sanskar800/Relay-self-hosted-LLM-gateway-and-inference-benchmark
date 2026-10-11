@@ -4,8 +4,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from relay.api.schemas import ChatCompletionRequest
-from relay.main import create_app
-from tests.unit.fakes import app_with_transport, make_config
+from tests.unit.fakes import app_with_transport, make_app, make_client, make_config
 
 VALID = {"model": "m", "messages": [{"role": "user", "content": "hi"}]}
 
@@ -66,7 +65,7 @@ def _client(backend_called: list[bool]) -> TestClient:
         backend_called.append(True)
         return httpx.Response(200, json={})
 
-    return TestClient(app_with_transport(httpx.MockTransport(backend)))
+    return make_client(app_with_transport(httpx.MockTransport(backend)))
 
 
 def test_endpoint_returns_openai_400_naming_the_bad_field() -> None:
@@ -93,7 +92,7 @@ def test_original_bytes_are_forwarded_not_reserialised() -> None:
 
     raw = b'{"model":"m","messages":[{"role":"user","content":"hi"}],"seed":7,"top_k":40}'
     app = app_with_transport(httpx.MockTransport(backend))
-    with TestClient(app) as client:
+    with make_client(app) as client:
         client.post(
             "/v1/chat/completions", content=raw, headers={"Content-Type": "application/json"}
         )
@@ -101,7 +100,7 @@ def test_original_bytes_are_forwarded_not_reserialised() -> None:
 
 
 def test_openapi_documents_the_request_body() -> None:
-    schema = create_app(config=make_config()).openapi()
+    schema = make_app(config=make_config()).openapi()
     body = schema["paths"]["/v1/chat/completions"]["post"]["requestBody"]
     assert "ChatCompletionRequest" in str(body)
     responses = schema["paths"]["/v1/chat/completions"]["post"]["responses"]

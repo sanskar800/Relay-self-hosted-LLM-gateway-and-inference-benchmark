@@ -18,7 +18,7 @@ from relay.backends.base import (
     BackendTimeout,
     BackendUnavailable,
 )
-from tests.unit.fakes import FakeBackend, FakeStream, app_with_fake
+from tests.unit.fakes import TEST_KEY, FakeBackend, FakeStream, app_with_fake, make_client
 
 MESSAGES = [{"role": "user", "content": "hi"}]
 
@@ -26,9 +26,9 @@ MESSAGES = [{"role": "user", "content": "hi"}]
 @contextmanager
 def sdk(backend: FakeBackend) -> Iterator[tuple[openai.OpenAI, TestClient]]:
     # raise_server_exceptions=False: see the 500 response instead of the raw exception.
-    with TestClient(app_with_fake(backend), raise_server_exceptions=False) as http:
+    with make_client(app_with_fake(backend), raise_server_exceptions=False) as http:
         client = openai.OpenAI(
-            base_url="http://testserver/v1", api_key="x", http_client=http, max_retries=0
+            base_url="http://testserver/v1", api_key=TEST_KEY, http_client=http, max_retries=0
         )
         yield client, http
 
