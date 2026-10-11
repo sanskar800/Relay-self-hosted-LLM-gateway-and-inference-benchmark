@@ -10,18 +10,17 @@ import redis.asyncio as aioredis
 from fastapi import Depends, FastAPI
 
 from relay.accounting.db import create_pool
-from relay.accounting.usage import UsageRecord
+from relay.accounting.ledger import UsageLedger
+from relay.accounting.usage import UsageEvent
 from relay.api import chat, models
 from relay.api.errors import install_error_handlers
 from relay.api.limits import BodySizeLimitMiddleware
 from relay.auth.dependency import require_api_key
 from relay.auth.keys import CachedKeyStore, KeyStore, PostgresKeyStore
 from relay.backends import ENGINES, Backend
-from relay.config import RelayConfig, Settings, load_config
+from relay.config import PricingConfig, RelayConfig, Settings, load_config, load_pricing
 from relay.limits.failover import FailoverRateLimiter
 from relay.limits.token_bucket import InMemoryRateLimiter, RateLimiter, RedisRateLimiter
-
-log = logging.getLogger("relay.usage")
 
 
 def configure_logging() -> None:
@@ -35,11 +34,6 @@ def configure_logging() -> None:
         handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s %(message)s"))
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
-
-
-def log_usage(record: UsageRecord) -> None:
-    """Default usage sink until the usage ledger exists: one log line per request."""
-    log.info("usage %s", record)
 
 
 def build_backends(
@@ -62,43 +56,58 @@ def create_app(
     settings: Settings | None = None,
     *,
     config: RelayConfig | None = None,
+    pricing: PricingConfig | None = None,
     backends: Mapping[str, Backend] | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
-    usage_sink: Callable[[UsageRecord], None] = log_usage,
+    usage_sink: Callable[[UsageEvent], None] | None = None,
     key_store: KeyStore | None = None,
     rate_limiter: RateLimiter | None = None,
 ) -> FastAPI:
     """Build the app.
 
-    The config is loaded and validated here, at startup, so a bad file stops the process
-    before it serves anything. Tests can pass a `config`, ready-made fake `backends`
-    (no HTTP at all), or a `transport` that replaces the network under real backends,
-    and a `key_store` / `rate_limiter` instead of Postgres / Redis.
+    Config and pricing are loaded and validated here, at startup, so a bad file stops
+    the process before it serves anything. Tests can pass a `config`, ready-made fake
+    `backends` (no HTTP at all) or a `transport` that replaces the network under real
+    backends, and a `key_store` / `rate_limiter` / `usage_sink` instead of Postgres,
+    Redis and the usage ledger.
     """
     configure_logging()
     settings = settings or Settings()
     config = config or load_config(settings.config_path)
+    pricing = pricing or load_pricing(settings.pricing_path)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.config = config
+        app.state.pricing = pricing
         app.state.backends = dict(backends) if backends else build_backends(config, transport)
         missing = set(config.backends) - set(app.state.backends)
         if missing:
             raise RuntimeError(f"no backend object for configured backends: {sorted(missing)}")
         app.state.started_at = int(time.time())
-        # Called once per completed request with its token usage.
-        app.state.usage_sink = usage_sink
+
         async with AsyncExitStack() as stack:
             for backend in app.state.backends.values():
                 stack.push_async_callback(backend.aclose)
-            if key_store is None:
+
+            pool = None
+            if key_store is None or usage_sink is None:
                 # Fail fast: a gateway that cannot authenticate anyone should not start.
                 pool = await create_pool(settings.database_url)
                 stack.push_async_callback(pool.close)
-                app.state.key_store = CachedKeyStore(PostgresKeyStore(pool))
+            app.state.key_store = key_store or CachedKeyStore(PostgresKeyStore(pool))
+
+            if usage_sink is None:
+                # Every finished request goes to the ledger (non-blocking queue). It is
+                # registered after the pool, so on shutdown it flushes before the pool closes.
+                ledger = UsageLedger(pool)
+                ledger.start()
+                stack.push_async_callback(ledger.close)
+                app.state.ledger = ledger
+                app.state.usage_sink = ledger.submit
             else:
-                app.state.key_store = key_store
+                app.state.usage_sink = usage_sink
+
             if rate_limiter is None:
                 redis_client = aioredis.from_url(
                     settings.redis_url, socket_connect_timeout=1, socket_timeout=1

@@ -8,7 +8,10 @@ completion tokens are estimated as the number of content chunks and labelled as 
 """
 
 import json
+import time
+import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Literal
 
 UsageSource = Literal["engine", "estimated", "missing"]
@@ -33,6 +36,20 @@ class UsageRecord:
         return self.prompt_tokens + self.completion_tokens
 
 
+@dataclass(frozen=True)
+class UsageEvent:
+    """One finished request, as written to the usage ledger (table usage_events)."""
+
+    request_id: uuid.UUID
+    occurred_at: datetime
+    tenant_id: str
+    api_key_id: str
+    usage: UsageRecord
+    ttft_ms: float | None  # streams only: time to the first content token
+    duration_ms: float
+    cost_gbp: float | None  # None until pricing rates are known
+
+
 def usage_from_completion(content: bytes) -> tuple[int | None, int | None, UsageSource]:
     """Usage from a non-streaming chat.completion body."""
     try:
@@ -53,6 +70,9 @@ class StreamUsage:
         self.prompt_tokens: int | None = None
         self.completion_tokens: int | None = None
         self.content_chunks = 0
+        # time.perf_counter() when the first chunk WITH content arrived (the first
+        # chunk usually only carries the role, so it does not count for TTFT).
+        self.first_content_at: float | None = None
 
     def observe(self, event: bytes) -> bool:
         """Record what the event says; return False if it must not reach the client."""
@@ -68,6 +88,8 @@ class StreamUsage:
 
         choices = chunk.get("choices") or []
         if any((c.get("delta") or {}).get("content") for c in choices if isinstance(c, dict)):
+            if self.first_content_at is None:
+                self.first_content_at = time.perf_counter()
             self.content_chunks += 1
 
         usage = chunk.get("usage")

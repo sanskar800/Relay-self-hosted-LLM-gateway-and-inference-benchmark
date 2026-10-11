@@ -97,7 +97,9 @@ async def test_usage_event_request_id_is_idempotent(pg: asyncpg.Connection) -> N
     )
     await pg.execute(insert, *event)
     await pg.execute(insert, *event)  # a retried batch must not double-count
-    assert await pg.fetchval("SELECT count(*) FROM usage_events") == 1
+    # Count only this test's row: the ledger writes real rows to the same table.
+    count_sql = "SELECT count(*) FROM usage_events WHERE request_id = $1"
+    assert await pg.fetchval(count_sql, event[0]) == 1
 
 
 async def test_pool_connects_with_configured_url() -> None:

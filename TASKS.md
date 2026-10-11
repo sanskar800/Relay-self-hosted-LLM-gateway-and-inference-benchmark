@@ -167,7 +167,7 @@ Goal: **every request is attributed to a tenant, limited and recorded.**
     - Expected result: ADR written; the chosen behaviour implemented (likely fail-open to a local in-memory bucket, plus a metric and a warning log).
     - Files: `docs/adr/002-rate-limit-failure-behaviour.md`, `src/relay/limits/`
     - Verify: integration test that stops Redis, sends requests and asserts the documented behaviour.
-- [ ] `[MUST]` **3.6 Non-blocking usage ledger**
+- [x] `[MUST]` **3.6 Non-blocking usage ledger** (done 2026-10-11; `cost_gbp` NULL until benchmark-based rates exist)
     - Why: cost attribution must be durable, but a slow database must never slow a user's request.
     - Expected result: one usage event per request (tenant, key ID, model, backend, prompt/completion tokens, TTFT, duration, status, estimated £); bounded `asyncio.Queue` and a batch writer task; buffering when Postgres is down; dropped events counted.
     - Files: `src/relay/accounting/ledger.py`, `config/pricing.yaml`

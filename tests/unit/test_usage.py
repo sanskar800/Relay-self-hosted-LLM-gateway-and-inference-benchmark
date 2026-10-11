@@ -88,7 +88,7 @@ def run(backend: FakeBackend, raw: bytes | None = None, **extra) -> tuple[bytes,
     app = make_app(
         config=make_config("m", backend.name),
         backends={backend.name: backend},
-        usage_sink=records.append,
+        usage_sink=lambda event: records.append(event.usage),
     )
     with make_client(app) as client:
         if raw is None:

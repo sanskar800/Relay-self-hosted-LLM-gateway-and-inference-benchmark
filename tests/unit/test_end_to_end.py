@@ -18,7 +18,7 @@ def stack(engine: FakeEngine) -> Iterator[tuple[openai.OpenAI, list[UsageRecord]
     app = make_app(
         config=make_config("m", "llamacpp-cpu"),
         transport=engine.transport(),
-        usage_sink=records.append,
+        usage_sink=lambda event: records.append(event.usage),
     )
     with make_client(app) as http:
         yield (

@@ -1,0 +1,14 @@
+# Estimated cost per model, used for cost_gbp in the usage ledger.
+#
+# Relay serves self-hosted models, so a fair rate is what the hardware costs per token:
+#   £ per 1M tokens = GPU £ per hour / (measured tokens per second x 3600) x 1,000,000
+# The tokens/s must come from Relay's own benchmark, and the GPU price from a documented
+# public source. Until then every rate is null (TBD) and cost_gbp is recorded as NULL:
+# no placeholder number pretends to be a cost.
+
+basis: "TBD: GPU price / measured throughput, from the benchmark"
+
+models:
+  qwen2.5-1.5b-instruct:
+    input_gbp_per_1m: null
+    output_gbp_per_1m: null

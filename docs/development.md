@@ -220,6 +220,14 @@ uv run relay-admin revoke-key rk_8f3aZ                     # by prefix or key id
 - **Known limitation:** the prompt estimate (chars / 4 + 4 per message) undercounts short prompts, because chat templates add tokens (observed: ~9 reserved vs ~30 real for "hi"). Settling corrects the bucket afterwards, so only the up-front check is looser. Calibrate against measured prompts later rather than guessing a factor now.
 - **Redis down ([ADR-002](adr/002-rate-limit-failure-behaviour.md)):** Relay keeps serving and enforces the same limits **per instance** in memory. It logs one warning (`rate limiter: Redis unavailable …`) and one info line on recovery, and skips Redis for 5 s after each failure so requests do not each wait for a timeout. Relay also starts without Redis. Verified by stopping the container: 200, 200, 200, 429 for a 3/min tenant; only the first request paid the ~1 s detection.
 
+### Usage ledger (table `usage_events`)
+- One row per request that reached a backend, including failed ones (e.g. 502, with no tokens): request id, time, tenant, key, model, backend, stream, status, prompt/completion tokens, `usage_source`, `ttft_ms` (streams only), `duration_ms`, `cost_gbp`. Every response carries **`x-request-id`**, the row's `request_id`. Requests refused before a backend (401/404/429) are not recorded.
+- **Never slows a request:** requests put events on a bounded queue (10,000); a background task writes batches of up to 500 (or every 1 s) in one transaction with `ON CONFLICT (request_id) DO NOTHING`.
+- **Postgres down:** the batch is retried with backoff (1 s, 2 s, … up to 30 s) while the queue absorbs new events; each failed attempt logs `relay.ledger usage ledger: write of N events failed …`. **Queue full:** new events are dropped and counted (`dropped`), with a warning at the first drop and every 1,000. **Bad rows** (constraint violations) are retried one by one; only the bad ones are dropped (`rejected`). **Shutdown:** queued and in-flight events are flushed for up to 5 s.
+- Verified 2026-10-11 against a running Relay: 5 requests → 5 rows; with Postgres stopped ~10 s, 3 requests still returned 200, three write failures were logged, and all rows appeared after the restart. asyncpg also logs its own `Failed to restore the pool connection floor` tracebacks during an outage; they are expected.
+- **`cost_gbp` is NULL for now:** `config/pricing.yaml` rates are `null` (TBD) until the benchmark measures tokens/s; then £/1M = GPU £/h ÷ (tokens/s × 3600) × 1,000,000. No placeholder price is used.
+- Inspect: `make db-shell`, then e.g. `SELECT tenant_id, count(*), sum(prompt_tokens + completion_tokens) FROM usage_events GROUP BY 1;`
+
 ### Request limits (`limits:` in `config/relay.yaml`)
 | Limit | Default | Response |
 |---|---|---|

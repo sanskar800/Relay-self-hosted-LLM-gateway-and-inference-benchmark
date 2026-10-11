@@ -19,6 +19,9 @@ class Settings(BaseSettings):
 
     # Env var is RELAY_CONFIG (an explicit alias, not RELAY_CONFIG_PATH).
     config_path: Path = Field(default=Path("config/relay.yaml"), validation_alias="RELAY_CONFIG")
+    pricing_path: Path = Field(
+        default=Path("config/pricing.yaml"), validation_alias="RELAY_PRICING"
+    )
     # Defaults match the local Docker Compose stack (see .env.example).
     database_url: str = "postgresql://relay:relay@127.0.0.1:5433/relay"
     redis_url: str = "redis://127.0.0.1:6379/0"
@@ -82,3 +85,34 @@ def load_config(path: Path) -> RelayConfig:
     except FileNotFoundError:
         raise ValueError(f"config file not found: {path} (set RELAY_CONFIG)") from None
     return RelayConfig.model_validate(raw)
+
+
+class ModelPrice(_Strict):
+    # £ per 1M tokens. None = not yet known (TBD); cost is then recorded as NULL.
+    input_gbp_per_1m: float | None = Field(default=None, ge=0)
+    output_gbp_per_1m: float | None = Field(default=None, ge=0)
+
+
+class PricingConfig(_Strict):
+    basis: str
+    models: dict[str, ModelPrice] = {}
+
+    def cost_gbp(self, model: str, prompt: int | None, completion: int | None) -> float | None:
+        """Estimated cost, or None if a rate or a token count is unknown."""
+        price = self.models.get(model)
+        if price is None or None in (
+            price.input_gbp_per_1m,
+            price.output_gbp_per_1m,
+            prompt,
+            completion,
+        ):
+            return None
+        return (prompt * price.input_gbp_per_1m + completion * price.output_gbp_per_1m) / 1e6
+
+
+def load_pricing(path: Path) -> PricingConfig:
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise ValueError(f"pricing file not found: {path} (set RELAY_PRICING)") from None
+    return PricingConfig.model_validate(raw)
