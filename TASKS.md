@@ -162,7 +162,7 @@ Goal: **every request is attributed to a tenant, limited and recorded.**
     - Expected result: request/min and token/min buckets per tenant; 429 with `Retry-After` and `x-ratelimit-*` headers.
     - Files: `src/relay/limits/token_bucket.py`, `src/relay/limits/token_bucket.lua`
     - Verify: unit tests of the refill maths (fake clock); integration test against real Redis: N+1 rapid requests and the last one is 429.
-- [ ] `[MUST]` **3.5 ADR-002: limiter behaviour when Redis is down, and its implementation**
+- [x] `[MUST]` **3.5 ADR-002: limiter behaviour when Redis is down, and its implementation** (done 2026-10-11: fail open to local per-instance limits)
     - Why: a classic interview question. Fail-open keeps an internal tool available; fail-closed protects a paid API.
     - Expected result: ADR written; the chosen behaviour implemented (likely fail-open to a local in-memory bucket, plus a metric and a warning log).
     - Files: `docs/adr/002-rate-limit-failure-behaviour.md`, `src/relay/limits/`

@@ -18,7 +18,8 @@ from relay.auth.dependency import require_api_key
 from relay.auth.keys import CachedKeyStore, KeyStore, PostgresKeyStore
 from relay.backends import ENGINES, Backend
 from relay.config import RelayConfig, Settings, load_config
-from relay.limits.token_bucket import RateLimiter, RedisRateLimiter
+from relay.limits.failover import FailoverRateLimiter
+from relay.limits.token_bucket import InMemoryRateLimiter, RateLimiter, RedisRateLimiter
 
 log = logging.getLogger("relay.usage")
 
@@ -103,7 +104,10 @@ def create_app(
                     settings.redis_url, socket_connect_timeout=1, socket_timeout=1
                 )
                 stack.push_async_callback(redis_client.aclose)
-                app.state.rate_limiter = RedisRateLimiter(redis_client)
+                # ADR-002: if Redis is down, enforce the same limits locally.
+                app.state.rate_limiter = FailoverRateLimiter(
+                    RedisRateLimiter(redis_client), InMemoryRateLimiter()
+                )
             else:
                 app.state.rate_limiter = rate_limiter
             yield

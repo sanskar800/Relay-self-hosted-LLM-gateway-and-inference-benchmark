@@ -68,7 +68,7 @@ Each of those is a gateway concern. Putting them in one place means every applic
 ### Rate limiting: Redis token bucket
 - **Why:** one noisy team must not starve the others of a shared GPU. Limits apply to **requests/min** and **tokens/min**, because a single request can ask for 4,000 tokens.
 - **Why Redis:** the bucket state must be shared across gateway replicas. A Lua script makes "refill + check + take" one atomic operation, which avoids race conditions between replicas.
-- **Open decision (ADR-002):** what happens when Redis is down? We fail open to a local in-memory limiter for an internal tool, or fail closed for a paid API.
+- **Decided ([ADR-002](adr/002-rate-limit-failure-behaviour.md)):** when Redis is down, Relay **fails open to a local in-memory limiter**: each instance enforces the same limits itself, so traffic stays bounded (up to N × the limit with N instances). Fail-closed would suit a paid API; authentication, by contrast, always fails closed.
 
 ### Routing, reliability and fallback
 - **Timeouts:** connect timeout, time-to-first-byte timeout, idle-between-chunks timeout and total timeout, set per backend.

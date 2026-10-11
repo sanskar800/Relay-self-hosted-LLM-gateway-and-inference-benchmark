@@ -218,7 +218,7 @@ uv run relay-admin revoke-key rk_8f3aZ                     # by prefix or key id
 - **Responses:** 429 with `retry-after`, `retry-after-ms` and OpenAI's `x-ratelimit-limit|remaining|reset-requests|tokens` headers (also sent on successful responses). A request that could never fit the token bucket gets 429 "Request too large" without `retry-after`.
 - **Inspect:** `make redis-cli`, then `HGETALL "relay:rl:{support-bot}:req"`.
 - **Known limitation:** the prompt estimate (chars / 4 + 4 per message) undercounts short prompts, because chat templates add tokens (observed: ~9 reserved vs ~30 real for "hi"). Settling corrects the bucket afterwards, so only the up-front check is looser. Calibrate against measured prompts later rather than guessing a factor now.
-- **Redis down:** not handled yet; decided in ADR-002 (next task).
+- **Redis down ([ADR-002](adr/002-rate-limit-failure-behaviour.md)):** Relay keeps serving and enforces the same limits **per instance** in memory. It logs one warning (`rate limiter: Redis unavailable …`) and one info line on recovery, and skips Redis for 5 s after each failure so requests do not each wait for a timeout. Relay also starts without Redis. Verified by stopping the container: 200, 200, 200, 429 for a 3/min tenant; only the first request paid the ~1 s detection.
 
 ### Request limits (`limits:` in `config/relay.yaml`)
 | Limit | Default | Response |

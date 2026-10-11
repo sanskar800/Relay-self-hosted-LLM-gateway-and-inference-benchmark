@@ -6,12 +6,11 @@ An ADR records **one** significant decision: the context, the options considered
 
 | # | Title | Status |
 |---|---|---|
-| none yet | | |
+| [002](002-rate-limit-failure-behaviour.md) | Rate limiting when Redis is unavailable: fail open to local per-instance limits | Accepted (2026-10-11) |
 
-Expected during the build (created only when decided):
+Still expected (created only when decided):
 
 - ADR-001: Inference engines and benchmark hardware (vLLM + llama.cpp; free Colab GPU instead of rented GPU)
-- ADR-002: Rate-limiter behaviour when Redis is unavailable (fail-open vs fail-closed)
 - ADR-003: Streaming retry policy (no retries after the first token)
 
 ## Template
