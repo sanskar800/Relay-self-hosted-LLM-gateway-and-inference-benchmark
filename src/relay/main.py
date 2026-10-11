@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import AsyncExitStack, asynccontextmanager
 
 import httpx
+import redis.asyncio as aioredis
 from fastapi import Depends, FastAPI
 
 from relay.accounting.db import create_pool
@@ -17,6 +18,7 @@ from relay.auth.dependency import require_api_key
 from relay.auth.keys import CachedKeyStore, KeyStore, PostgresKeyStore
 from relay.backends import ENGINES, Backend
 from relay.config import RelayConfig, Settings, load_config
+from relay.limits.token_bucket import RateLimiter, RedisRateLimiter
 
 log = logging.getLogger("relay.usage")
 
@@ -63,13 +65,14 @@ def create_app(
     transport: httpx.AsyncBaseTransport | None = None,
     usage_sink: Callable[[UsageRecord], None] = log_usage,
     key_store: KeyStore | None = None,
+    rate_limiter: RateLimiter | None = None,
 ) -> FastAPI:
     """Build the app.
 
     The config is loaded and validated here, at startup, so a bad file stops the process
     before it serves anything. Tests can pass a `config`, ready-made fake `backends`
     (no HTTP at all), or a `transport` that replaces the network under real backends,
-    and a `key_store` instead of Postgres.
+    and a `key_store` / `rate_limiter` instead of Postgres / Redis.
     """
     configure_logging()
     settings = settings or Settings()
@@ -95,6 +98,14 @@ def create_app(
                 app.state.key_store = CachedKeyStore(PostgresKeyStore(pool))
             else:
                 app.state.key_store = key_store
+            if rate_limiter is None:
+                redis_client = aioredis.from_url(
+                    settings.redis_url, socket_connect_timeout=1, socket_timeout=1
+                )
+                stack.push_async_callback(redis_client.aclose)
+                app.state.rate_limiter = RedisRateLimiter(redis_client)
+            else:
+                app.state.rate_limiter = rate_limiter
             yield
 
     app = FastAPI(title="Relay", lifespan=lifespan)

@@ -157,7 +157,7 @@ Goal: **every request is attributed to a tenant, limited and recorded.**
     - Expected result: allow-list and caps checked before routing. ~~403 if not allowed~~ **Changed to 404 `model_not_found`, identical to an unknown model** (as OpenAI does), so tenants cannot discover which models exist; the reason is logged server-side. An omitted `max_tokens` gets the tenant's cap added, so the cap cannot be bypassed.
     - Files: `src/relay/auth/policy.py`
     - Verify: unit tests.
-- [ ] `[MUST]` **3.4 Redis token-bucket rate limiter (Lua)**
+- [x] `[MUST]` **3.4 Redis token-bucket rate limiter (Lua)** (done 2026-10-11)
     - Why: fair sharing of a scarce GPU across tenants and replicas; the Lua script makes "refill + check + take" atomic.
     - Expected result: request/min and token/min buckets per tenant; 429 with `Retry-After` and `x-ratelimit-*` headers.
     - Files: `src/relay/limits/token_bucket.py`, `src/relay/limits/token_bucket.lua`

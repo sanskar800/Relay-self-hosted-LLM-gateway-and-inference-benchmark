@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from relay.auth.keys import Principal, hash_key
 from relay.backends.base import BackendError, BackendResponse
 from relay.config import RelayConfig
+from relay.limits.token_bucket import InMemoryRateLimiter
 from relay.main import create_app
 
 
@@ -101,8 +102,9 @@ class StaticKeyStore:
 
 
 def make_app(**kwargs) -> FastAPI:
-    """create_app with an in-memory key store that accepts TEST_KEY (no Postgres)."""
+    """create_app with in-memory auth (accepts TEST_KEY) and rate limiting: no Postgres/Redis."""
     kwargs.setdefault("key_store", StaticKeyStore())
+    kwargs.setdefault("rate_limiter", InMemoryRateLimiter())
     return create_app(**kwargs)
 
 

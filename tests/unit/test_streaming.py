@@ -115,7 +115,11 @@ async def test_upstream_is_closed_and_usage_recorded_when_client_stops_reading()
     upstream = FakeStream(list(EVENTS))
     usage = StreamUsage(forward_usage_chunk=False)
     finished: list[bool] = []
-    relay = _relay_events(upstream, usage, lambda: finished.append(True))
+
+    async def on_finish() -> None:
+        finished.append(True)
+
+    relay = _relay_events(upstream, usage, on_finish)
     assert await anext(relay) == EVENTS[0]
     assert not upstream.closed
     await relay.aclose()  # what Starlette does when the client goes away

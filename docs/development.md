@@ -210,6 +210,16 @@ uv run relay-admin revoke-key rk_8f3aZ                     # by prefix or key id
 - **`max_tokens` cap:** `max_tokens`/`max_completion_tokens` above the tenant's cap → 400 naming the field. If the client sends neither, Relay **adds `max_tokens` = cap**, so omitting the field cannot bypass the cap. Verified 2026-10-11: a tenant capped at 5 omitting `max_tokens` got exactly 5 completion tokens (`finish_reason: length`).
 - **What Relay changes in a request** (`src/relay/api/upstream.py`): nothing, except adding `stream_options.include_usage` on streams (accounting) and the default `max_tokens` above (policy). When either applies, the JSON is re-serialised once.
 
+### Rate limits (per tenant, token buckets in Redis)
+- Two buckets per tenant, sized from its `tenants` row: **requests/min** and **LLM tokens/min**. Each holds up to its per-minute value and refills **continuously** (no burst at minute boundaries).
+- **Reserve, then settle:** before a request Relay reserves 1 request + (estimated prompt + `max_tokens`) tokens; afterwards it refunds `reserved - actual` using the engine's count (or charges more if the request used more). A request that fails before generating anything refunds all its tokens. If usage is `missing`, the reservation stands.
+- **Atomic:** `src/relay/limits/token_bucket.lua` refills, checks both buckets and takes from both in one Redis script, using Redis's clock (`TIME`). Verified 2026-10-11: 50 concurrent requests against a limit of 10 → **exactly 10 admitted** (3 trials); a naive GET-check-SET version admitted **50**.
+- **Keys:** `relay:rl:{tenant}:req` / `:tok` (hash tag `{tenant}` keeps both in one Redis Cluster slot); they expire after the full-refill time + 60 s.
+- **Responses:** 429 with `retry-after`, `retry-after-ms` and OpenAI's `x-ratelimit-limit|remaining|reset-requests|tokens` headers (also sent on successful responses). A request that could never fit the token bucket gets 429 "Request too large" without `retry-after`.
+- **Inspect:** `make redis-cli`, then `HGETALL "relay:rl:{support-bot}:req"`.
+- **Known limitation:** the prompt estimate (chars / 4 + 4 per message) undercounts short prompts, because chat templates add tokens (observed: ~9 reserved vs ~30 real for "hi"). Settling corrects the bucket afterwards, so only the up-front check is looser. Calibrate against measured prompts later rather than guessing a factor now.
+- **Redis down:** not handled yet; decided in ADR-002 (next task).
+
 ### Request limits (`limits:` in `config/relay.yaml`)
 | Limit | Default | Response |
 |---|---|---|
