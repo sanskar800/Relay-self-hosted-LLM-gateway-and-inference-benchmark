@@ -1,0 +1,28 @@
+# Routing config for Relay running INSIDE Docker Compose (`make up-all`): backends are
+# reached by service name on the Compose network. For Relay on the host, see relay.yaml.
+
+backends:
+  llamacpp-cpu:
+    engine: llamacpp
+    url: http://llamacpp:8080
+  llamacpp-gpu: # opt-in: `make up-gpu`
+    engine: llamacpp
+    url: http://llamacpp-gpu:8080
+
+retry:
+  max_attempts: 3
+  base_delay_s: 0.1
+  max_delay_s: 1.0
+
+breaker:
+  failure_threshold: 3
+  open_duration_s: 10
+
+limits:
+  max_body_bytes: 1048576
+  max_messages: 256
+  max_tokens: 4096
+
+models:
+  qwen2.5-1.5b-instruct:
+    backends: [llamacpp-cpu, llamacpp-gpu]

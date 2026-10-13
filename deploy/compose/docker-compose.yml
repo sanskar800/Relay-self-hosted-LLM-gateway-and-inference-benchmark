@@ -161,6 +161,28 @@ services:
       retries: 30
     restart: unless-stopped
 
+  # Relay itself as a container. Opt-in (`make up-all`): in development Relay usually
+  # runs on the host (`make run`) for fast reloads.
+  relay:
+    profiles: [app]
+    build:
+      context: ../..
+    environment:
+      RELAY_CONFIG: config/relay.docker.yaml
+      RELAY_DATABASE_URL: postgresql://relay:relay@postgres:5432/relay
+      RELAY_REDIS_URL: redis://redis:6379/0
+      RELAY_OTEL_ENDPOINT: http://jaeger:4318
+    ports:
+      # Also what Prometheus scrapes (host.docker.internal:8000).
+      - "127.0.0.1:${RELAY_HOST_PORT:-8000}:8000"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      llamacpp: { condition: service_healthy }
+    # docker stop sends SIGTERM: 5 s not-ready grace + up to 30 s drain before SIGKILL.
+    stop_grace_period: 40s
+    restart: unless-stopped
+
   # Traces: receives OTLP from Relay (RELAY_OTEL_ENDPOINT), UI on :16686. In-memory.
   jaeger:
     image: jaegertracing/jaeger:2.22.0

@@ -227,11 +227,11 @@ Goal: **Relay survives backend failure and you can see what it is doing.**
     - Expected result: FastAPI + httpx auto-instrumentation plus manual spans for auth, limit and route; exported via OTLP to Jaeger in Compose.
     - Files: `src/relay/telemetry/tracing.py`, compose
     - Verify: a trace in the Jaeger UI shows the stage spans.
-- [ ] `[MUST]` **4.10 Failure-scenario integration tests**
+- [x] `[MUST]` **4.10 Failure-scenario integration tests** (done 2026-10-13)
     - Expected result: backend killed mid-stream; slow backend → timeout → fallback; Redis down → documented behaviour; Postgres down → requests still served.
     - Files: `tests/integration/`
     - Verify: `make test-integration` is green.
-- [ ] `[SHOULD]` **4.11 Relay Dockerfile; `make up` runs the whole stack**
+- [x] `[SHOULD]` **4.11 Relay Dockerfile; `make up` runs the whole stack** (done 2026-10-13)
     - Files: `Dockerfile`, compose
     - Verify: fresh clone, then `make up`, then curl works.
 - [x] `[SHOULD]` **4.12 Prometheus alert rules** (error rate, TTFT p95 above SLO) (done 2026-10-13)
@@ -366,3 +366,4 @@ Goal: **real measurements on hardware we actually have.** We only compare config
 | 2026-10-08 | 1 | 1.3–1.6, 1.8–1.10 | **Day 1 checkpoint met:** OpenAI SDK → Relay → llama.cpp (CPU, non-streaming), verified from a clean clone. Relay moved to port 8000 (8080 taken by another project). 1.7 (SHOULD) was blocked on the NVIDIA driver; driver updated to 617.42 and GPU service added (`make up-gpu`, :8082). llama.cpp ports bound to 127.0.0.1. **Day 1 complete.** |
 | 2026-10-10 | 2 | 2.1–2.10 | **Day 2 complete.** Streaming gateway with backend abstraction, YAML routing, `/v1/models`, usage capture, OpenAI-format errors, request limits; 111 unit + 7 contract tests. Order changed to do streaming before the abstraction. 2.9 retagged SHOULD → MUST (spec requires size limits). Colab check passed (T4, vLLM 0.31.0); findings: `--dtype half`, port clash with Relay, Colab on Python 3.13. 2.11 (OPTIONAL) skipped. |
 | 2026-10-11 | 3 | 3.1–3.7 | **Day 3 complete; checkpoint met live:** `batch-summariser` (30/min) sent 40 concurrent requests → 30×200, 10×429 (`retry-after: 2`) while `support-bot` (60/min) got 10×200; ledger shows 30 and 10 rows. Postgres on host port 5433 (native PG18 on 5432). Decisions: tenant policy in Postgres; forbidden model → 404 like unknown (was 403); omitted `max_tokens` gets the tenant cap; ADR-002 fail open to local limits; `cost_gbp` NULL until benchmark rates. 3.8 (OPTIONAL) skipped. 164 unit, 20 integration, 8 contract tests. |
+| 2026-10-13 | 4 | 4.1–4.12 | **Day 4 complete.** 7 commits: timeouts + retries before the first token (ADR-003); circuit breakers + fallback routing; graceful shutdown + `/readyz` (`make serve`); JSON logs + request ids + Prometheus metrics; Prometheus/Grafana (port 3001) + 7 SLO alert rules with promtool tests; OpenTelemetry → Jaeger; failure-scenario tests + Relay Dockerfile (`make up-all`). Checkpoint met live: stopping the GPU primary under traffic opened its breaker (`relay_circuit_breaker_state=2`), traffic fell back to CPU, the trace showed the retries. Notes: on Windows a refused connection takes ~2 s (breaker limits the cost); ports 8000 and 3000 held by other local projects (checks used 8010; Grafana on 3001). 213 unit, 26 integration, 8 contract tests. |

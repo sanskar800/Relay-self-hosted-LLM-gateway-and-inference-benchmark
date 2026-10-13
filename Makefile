@@ -3,7 +3,7 @@
 
 COMPOSE = docker compose -f deploy/compose/docker-compose.yml
 
-.PHONY: help setup test lint format models models-all up up-gpu down ps logs run serve test-contract test-integration test-alerts db-shell redis-cli db-reset db-apply
+.PHONY: help setup test lint format models models-all up up-gpu up-all down ps logs run serve test-contract test-integration test-alerts db-shell redis-cli db-reset db-apply
 
 help:  ## List targets
 	@uv run python -c "import re; [print(f\"{m[0]:<12} {m[1]}\") for m in re.findall(r\"^([a-z-]+):.*## (.*)$$\", open(\"Makefile\").read(), re.M)]"
@@ -44,8 +44,11 @@ up:  ## Start the local stack and wait until healthy
 up-gpu:  ## Also start llama.cpp on the RTX 4050 (:8082)
 	$(COMPOSE) --profile gpu up -d --wait
 
-down:  ## Stop the local stack (including the GPU service)
-	$(COMPOSE) --profile gpu down
+up-all:  ## Everything in Docker, including Relay itself (built from the Dockerfile)
+	$(COMPOSE) --profile app up -d --build --wait
+
+down:  ## Stop the local stack (including the GPU and Relay containers)
+	$(COMPOSE) --profile gpu --profile app down
 
 ps:  ## Show stack status
 	$(COMPOSE) ps

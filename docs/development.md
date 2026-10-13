@@ -193,7 +193,13 @@ curl -s localhost:8081/v1/chat/completions -H "Content-Type: application/json" \
 make up      # backends and stores first
 make run     # development: Relay on http://localhost:8000, auto-reloads on changes in src/
 make serve   # production-style: python -m relay.serve, with graceful shutdown (no reload)
+make up-all  # everything in Docker, Relay included (image built from the Dockerfile)
 ```
+
+### Relay in Docker (`make up-all`)
+- `Dockerfile`: `python:3.12-slim` + uv 0.9.9; dependencies installed from `uv.lock` (`--frozen --no-dev`) in a cached layer; runs as non-root user `relay` (uid 10001); `CMD python -m relay.serve`; health check on `/healthz`. `.dockerignore` keeps `.venv`, `.env` and caches out.
+- Compose service `relay` (profile `app`) uses `config/relay.docker.yaml` (backends by service name, e.g. `http://llamacpp:8080`) and reaches Postgres, Redis and Jaeger by service name. Host port `RELAY_HOST_PORT` (default 8000). `stop_grace_period: 40s` covers the 5 s grace + 30 s drain.
+- Verified 2026-10-13 (on host port 8010): image 438 MB; healthy in ~50 s including the build; contract tests pass against it; `docker stop` during a 120-token stream → `shutdown started: not ready; 1 request(s) in flight`, the stream finished with `[DONE]`, container stopped after ~6 s.
 
 ### Liveness, readiness and graceful shutdown
 - `GET /healthz` = **liveness** (process alive; stays 200 while draining, so it is not restarted mid-drain). `GET /readyz` = **readiness** (should it get new traffic?): 200 `ready`, or 503 `draining` once shutdown starts; the body also shows `in_flight` and each backend's breaker state.
@@ -317,7 +323,14 @@ Start `.venv/Scripts/uvicorn.exe` directly, not via `uv run`: killing the `uv ru
 |---|---|---|---|
 | Unit | `make test` | nothing: in-memory fakes | Relay's own logic, including real SDK → Relay → real HTTP backend → fake engine; ~2 s |
 | Contract | `make test-contract` | `make up` + `make run` | The **official OpenAI SDK** works against Relay unchanged |
-| Integration | `make test-integration` | `make up` (Postgres, Redis) | Schema rules, key lookup, ledger idempotency, Redis; failure scenarios on Day 4. Each DB test runs in a rolled-back transaction, so no data is left behind |
+| Integration | `make test-integration` | `make up` (Postgres, Redis; llama.cpp for the shutdown test) | Schema rules, key lookup, ledger, Redis limiter, graceful shutdown under a real signal, and **failure scenarios** (`test_failures.py`). Each DB test runs in a rolled-back transaction, so no data is left behind |
+
+**Failure scenarios** (`tests/integration/test_failures.py`) run scripted engines behind real uvicorn sockets (`tests/engine_server.py`), so failures are genuine (dropped TCP connections, httpx read timeouts):
+1. backend crashes after 3 tokens → client gets the 3 tokens and an error event, no `[DONE]`, no retry, breaker counts it;
+2. primary too slow to start (first-token timeout) → falls back to the secondary within the timeout; backend silent mid-stream → cut by the idle timeout with `backend_timeout`;
+3. Redis unreachable → requests served and still limited per instance (`relay_ratelimiter_degraded 1`);
+4. Postgres unreachable after startup → requests served; the ledger buffers events and records write failures.
+Stable across repeated runs (~11 s).
 
 - **Test doubles, two levels:** `tests/unit/fakes.py` has `FakeBackend`/`FakeStream` (the `Backend` protocol in memory: gateway logic with no HTTP). `tests/fake_engine.py` has `FakeEngine`, a scripted OpenAI-compatible server used as the httpx transport under the real backend; it mimics llama.cpp's stream (role chunk, token chunks, finish chunk, usage chunk **only when `include_usage` is requested**, `[DONE]`) and records the requests it receives.
 - **The OpenAI SDK runs in-process** in unit tests by passing the `TestClient` as `http_client` (`tests/unit/test_errors.py`, `test_end_to_end.py`), so exception classes and parsing are the SDK's own.

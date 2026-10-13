@@ -86,8 +86,8 @@ Only technologies this project actually uses:
 | Day 1: foundations, local inference, minimal gateway | ✅ Done (GPU backend pending an NVIDIA driver update) |
 | Day 2: OpenAI-compatible gateway and streaming | ✅ Done |
 | Day 3: multi-tenancy, rate limiting, usage ledger | ✅ Done |
-| Day 4: reliability and observability | ⏳ Next |
-| Day 5: benchmark harness | ⬜ |
+| Day 4: reliability and observability | ✅ Done |
+| Day 5: benchmark harness | ⏳ Next |
 | Day 6: GPU benchmark (local RTX 4050 + free Colab GPU) | ⬜ |
 | Day 7: analysis, report, CI, polish | ⬜ |
 
