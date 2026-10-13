@@ -8,6 +8,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 import httpx
 import redis.asyncio as aioredis
 from fastapi import Depends, FastAPI
+from fastapi.responses import JSONResponse
 
 from relay.accounting.db import create_pool
 from relay.accounting.ledger import UsageLedger
@@ -19,6 +20,7 @@ from relay.auth.dependency import require_api_key
 from relay.auth.keys import CachedKeyStore, KeyStore, PostgresKeyStore
 from relay.backends import ENGINES, Backend
 from relay.config import PricingConfig, RelayConfig, Settings, load_config, load_pricing
+from relay.lifecycle import Lifecycle, LifecycleMiddleware
 from relay.limits.failover import FailoverRateLimiter
 from relay.limits.token_bucket import InMemoryRateLimiter, RateLimiter, RedisRateLimiter
 from relay.routing.circuit_breaker import CircuitBreaker
@@ -126,8 +128,12 @@ def create_app(
             yield
 
     app = FastAPI(title="Relay", lifespan=lifespan)
+    # Created with the app (not in the lifespan) so the server can flip it on a signal.
+    lifecycle = app.state.lifecycle = Lifecycle()
     install_error_handlers(app)
     app.add_middleware(BodySizeLimitMiddleware, max_bytes=config.limits.max_body_bytes)
+    # Added last = outermost: while draining, new API requests are refused before any work.
+    app.add_middleware(LifecycleMiddleware, lifecycle=lifecycle)
     # Every API route requires an API key; /healthz stays open for load balancers.
     authenticated = [Depends(require_api_key)]
     app.include_router(chat.router, dependencies=authenticated)
@@ -135,8 +141,19 @@ def create_app(
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
-        """Liveness: the process is up. Says nothing about backends (that is /readyz, Day 4)."""
+        """Liveness: the process is up (also while draining). If not: restart it."""
         return {"status": "ok"}
+
+    @app.get("/readyz", responses={503: {"description": "Draining: send no new traffic"}})
+    async def readyz() -> JSONResponse:
+        """Readiness: should this instance receive new traffic? 503 once shutdown starts."""
+        router = getattr(app.state, "router", None)
+        body = {
+            "status": "draining" if lifecycle.draining else "ready",
+            "in_flight": lifecycle.in_flight,
+            "breakers": {n: b.state.value for n, b in router.breakers.items()} if router else {},
+        }
+        return JSONResponse(body, status_code=503 if lifecycle.draining else 200)
 
     return app
 

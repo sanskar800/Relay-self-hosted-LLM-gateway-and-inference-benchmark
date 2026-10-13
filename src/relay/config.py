@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     pricing_path: Path = Field(
         default=Path("config/pricing.yaml"), validation_alias="RELAY_PRICING"
     )
+    # `python -m relay.serve` (production-style server with graceful shutdown).
+    host: str = "127.0.0.1"
+    port: int = 8000
+    shutdown_grace_s: float = Field(default=5.0, ge=0)  # not ready, still accepting
+    drain_timeout_s: float = Field(default=30.0, gt=0)  # then wait this long for in-flight
     # Defaults match the local Docker Compose stack (see .env.example).
     database_url: str = "postgresql://relay:relay@127.0.0.1:5433/relay"
     redis_url: str = "redis://127.0.0.1:6379/0"

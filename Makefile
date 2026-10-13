@@ -3,7 +3,7 @@
 
 COMPOSE = docker compose -f deploy/compose/docker-compose.yml
 
-.PHONY: help setup test lint format models models-all up up-gpu down ps logs run test-contract test-integration db-shell redis-cli db-reset db-apply
+.PHONY: help setup test lint format models models-all up up-gpu down ps logs run serve test-contract test-integration db-shell redis-cli db-reset db-apply
 
 help:  ## List targets
 	@uv run python -c "import re; [print(f\"{m[0]:<12} {m[1]}\") for m in re.findall(r\"^([a-z-]+):.*## (.*)$$\", open(\"Makefile\").read(), re.M)]"
@@ -48,6 +48,9 @@ ps:  ## Show stack status
 
 logs:  ## Follow stack logs
 	$(COMPOSE) logs -f --tail=100
+
+serve:  ## Start Relay on :8000 production-style (graceful shutdown, no auto-reload)
+	uv run python -m relay.serve
 
 run:  ## Start Relay on http://localhost:8000 (auto-reload on code changes)
 	uv run uvicorn relay.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir src

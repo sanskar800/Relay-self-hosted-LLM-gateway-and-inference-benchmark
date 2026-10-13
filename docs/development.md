@@ -174,9 +174,16 @@ curl -s localhost:8081/v1/chat/completions -H "Content-Type: application/json" \
 ## 7. Running Relay
 
 ```bash
-make up     # backend first (llama.cpp on :8081)
-make run    # Relay on http://localhost:8000, auto-reloads on changes in src/
+make up      # backends and stores first
+make run     # development: Relay on http://localhost:8000, auto-reloads on changes in src/
+make serve   # production-style: python -m relay.serve, with graceful shutdown (no reload)
 ```
+
+### Liveness, readiness and graceful shutdown
+- `GET /healthz` = **liveness** (process alive; stays 200 while draining, so it is not restarted mid-drain). `GET /readyz` = **readiness** (should it get new traffic?): 200 `ready`, or 503 `draining` once shutdown starts; the body also shows `in_flight` and each backend's breaker state.
+- With `make serve`, a shutdown signal (SIGTERM; Ctrl+C or Ctrl+Break on Windows) starts **draining**: `/readyz` → 503 and new `/v1` requests → 503 with `Retry-After: 1`, while in-flight requests continue. After `RELAY_SHUTDOWN_GRACE_S` (5 s) uvicorn stops accepting connections; in-flight requests get up to `RELAY_DRAIN_TIMEOUT_S` (30 s) to finish, then are cancelled; then the app shuts down (usage ledger flushed). A second Ctrl+C forces an immediate exit.
+- **Windows:** `kill` from Git Bash is `TerminateProcess` (no handler runs, no draining). Use Ctrl+C in the console, or Ctrl+Break sent to a process started with `CREATE_NEW_PROCESS_GROUP` (as `tests/integration/test_graceful_shutdown.py` does). The process exits with code 3 after a Ctrl+Break: uvicorn re-raises the captured signal at the end.
+- Verified 2026-10-13: Ctrl+Break during a 150-token stream → `/readyz` 503 (`in_flight: 1`), `/healthz` 200, new request 503; new connections refused after the 2 s grace; the stream still finished with `[DONE]`; the process exited after the app's shutdown.
 
 - **Port 8000**, not 8080: on this machine another project's nginx container already publishes 8080. Docker and uvicorn can both bind it on Windows without an error, and `localhost:8080` then silently reaches nginx. Check with `Get-NetTCPConnection -LocalPort 8000 -State Listen` before blaming Relay.
 - Settings come from `RELAY_*` environment variables or `.env` (template: `.env.example`). Today only `RELAY_CONFIG` (default `config/relay.yaml`).

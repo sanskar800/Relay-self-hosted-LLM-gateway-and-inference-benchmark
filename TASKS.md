@@ -204,7 +204,7 @@ Goal: **Relay survives backend failure and you can see what it is doing.**
     - Expected result: the router picks the first backend whose breaker is not open; falls back on pre-first-token failure. Local demo: llama.cpp GPU primary, llama.cpp CPU secondary.
     - Files: `src/relay/routing/router.py`
     - Verify: `docker stop` the primary; requests still succeed via the secondary; the breaker metric shows open.
-- [ ] `[MUST]` **4.5 Graceful shutdown**
+- [x] `[MUST]` **4.5 Graceful shutdown** (done 2026-10-13; `make serve`)
     - Why: deploys should not cut users off mid-answer.
     - Expected result: on SIGTERM, `/readyz` returns 503, new requests are rejected and in-flight streams drain up to a deadline.
     - Files: `src/relay/main.py`
