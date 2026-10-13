@@ -144,8 +144,18 @@ Both ports are bound to **127.0.0.1**: llama.cpp has no authentication (its log 
 
 | `postgres` | **5433** | `postgres:18.6-alpine` | Tenants, hashed API keys, usage ledger. Data in volume `relay_pgdata` (survives `make down`). Schema: `deploy/compose/initdb/001_schema.sql` |
 | `redis` | 6379 | `redis:8.10.2-alpine` | Rate-limit counters. **No persistence** (`--save "" --appendonly no`): counters are short-lived by design |
+| `prometheus` | 9090 | `prom/prometheus:v3.15.0` | Scrapes Relay at `host.docker.internal:8000` and llama.cpp every 5 s; evaluates `monitoring/rules.yml`. Data in volume `relay_promdata` (7 days) |
+| `grafana` | **3001** | `grafana/grafana:13.2.4` | Dashboard **Relay** provisioned from `monitoring/grafana/` (home page; also `/d/relay-overview`). Anonymous read-only; admin/admin (local only). 3001 because 3000 is often taken |
 
-*(Prometheus, Grafana and Jaeger are added on Day 4.)*
+*(Jaeger is added with tracing.)*
+
+### Monitoring
+- Open **http://localhost:3001** (Grafana) and **http://localhost:9090** (Prometheus: *Status → Targets*, *Alerts*).
+- Prometheus expects **Relay on port 8000** (`make run` / `make serve`). If something else holds 8000, the `relay` target shows *down*. (On 2026-10-13 another local project's server held 8000, so the live check used a temporary config pointing at 8010.)
+- The dashboard (15 panels): chat requests by status, 5xx ratio (SLO 1 %), backend outcomes; TTFT, inter-token latency and gateway overhead p50/p95/p99 with SLO lines; output tokens/s, tokens/min per tenant, rate-limited requests; breaker state, retries/fallbacks, in-flight (Relay, open streams, llama.cpp processing/queued); limiter degraded, ledger, scrape targets. The JSON in the repo is the source of truth (UI edits are not saved).
+- **Alert rules** (`monitoring/rules.yml`, from the brief's SLOs): `RelayHighErrorRate` (>1 % 5xx for 5 m), `RelayTTFTp95AboveSLO` (>1 s for 10 m), `RelayITLp95AboveSLO` (>100 ms for 10 m), `RelayDown`, `RelayCircuitBreakerOpen`, `RelayRateLimiterDegraded`, `RelayLedgerDroppingEvents`. Visible at http://localhost:9090/alerts; no notification delivery (Alertmanager) in the local stack.
+- **`make test-alerts`** validates the Prometheus config and runs `monitoring/rules.test.yml` with promtool (e.g. the TTFT alert is pending at 8 min and firing at 20 min when p95 ≈ 1.95 s).
+- Verified 2026-10-13: all targets up; 7 rules loaded; Grafana datasource healthy; after mixed traffic and stopping the GPU engine, every panel query returned data (TTFT/ITL percentiles, tokens/s, `relay_circuit_breaker_state{backend="llamacpp-gpu"} = 2`, `up` = 0 for the stopped engine).
 
 **Database helpers:** `make db-shell` (psql), `make redis-cli`, and `make db-reset`, which **deletes all Relay database data** and re-creates the schema.
 

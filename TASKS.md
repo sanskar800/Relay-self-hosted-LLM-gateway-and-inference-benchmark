@@ -218,7 +218,7 @@ Goal: **Relay survives backend failure and you can see what it is doing.**
     - Expected result: `/metrics` with request count by status/backend, TTFT and ITL histograms, output tokens, gateway overhead histogram, in-flight per backend, breaker state gauge, tokens and £ per tenant, ledger drops.
     - Files: `src/relay/telemetry/metrics.py`
     - Verify: `curl :8000/metrics` after traffic.
-- [ ] `[MUST]` **4.8 Prometheus + Grafana in Compose with a provisioned dashboard**
+- [x] `[MUST]` **4.8 Prometheus + Grafana in Compose with a provisioned dashboard** (done 2026-10-13)
     - Expected result: dashboard JSON committed: traffic, errors, TTFT/ITL p50/p95/p99, tokens/s, per-tenant usage, breaker state.
     - Files: `monitoring/prometheus.yml`, `monitoring/grafana/`
     - Verify: `make up`, generate traffic, panels move.
@@ -234,7 +234,7 @@ Goal: **Relay survives backend failure and you can see what it is doing.**
 - [ ] `[SHOULD]` **4.11 Relay Dockerfile; `make up` runs the whole stack**
     - Files: `Dockerfile`, compose
     - Verify: fresh clone, then `make up`, then curl works.
-- [ ] `[SHOULD]` **4.12 Prometheus alert rules** (error rate, TTFT p95 above SLO)
+- [x] `[SHOULD]` **4.12 Prometheus alert rules** (error rate, TTFT p95 above SLO) (done 2026-10-13)
     - Files: `monitoring/rules.yml`
 
 **Checkpoint:** kill a backend under traffic; the dashboard shows the breaker opening and fallback taking over.

@@ -1,0 +1,56 @@
+# Unit tests for the alert rules: `make test-alerts` (promtool test rules).
+
+rule_files:
+  - rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Every request takes 1-2 s to its first token: p95 ~ 1.95 s > 1 s SLO.
+  - interval: 1m
+    input_series:
+      - series: 'relay_ttft_seconds_bucket{le="0.5", model="m"}'
+        values: "0x30"
+      - series: 'relay_ttft_seconds_bucket{le="1", model="m"}'
+        values: "0x30"
+      - series: 'relay_ttft_seconds_bucket{le="2", model="m"}'
+        values: "0+60x30"
+      - series: 'relay_ttft_seconds_bucket{le="+Inf", model="m"}'
+        values: "0+60x30"
+    alert_rule_test:
+      - eval_time: 8m # above the SLO, but not yet for the required 10 minutes
+        alertname: RelayTTFTp95AboveSLO
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: RelayTTFTp95AboveSLO
+        exp_alerts:
+          - exp_labels: { severity: page, model: m }
+            exp_annotations: { summary: "TTFT p95 for m is above the 1 s SLO" }
+
+  # Healthy: every first token within 0.5 s.
+  - interval: 1m
+    input_series:
+      - series: 'relay_ttft_seconds_bucket{le="0.5", model="m"}'
+        values: "0+60x30"
+      - series: 'relay_ttft_seconds_bucket{le="1", model="m"}'
+        values: "0+60x30"
+      - series: 'relay_ttft_seconds_bucket{le="+Inf", model="m"}'
+        values: "0+60x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: RelayTTFTp95AboveSLO
+        exp_alerts: []
+
+  # 2 of 100 chat requests per minute fail with 5xx: 2% > 1% for more than 5 minutes.
+  - interval: 1m
+    input_series:
+      - series: 'relay_http_requests_total{route="/v1/chat/completions", status="200"}'
+        values: "0+98x30"
+      - series: 'relay_http_requests_total{route="/v1/chat/completions", status="502"}'
+        values: "0+2x30"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: RelayHighErrorRate
+        exp_alerts:
+          - exp_labels: { severity: page }
+            exp_annotations: { summary: "More than 1% of chat requests fail with 5xx" }

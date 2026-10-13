@@ -1,0 +1,65 @@
+# Alert rules. Thresholds come from the SLO targets in docs/brief.md.
+# Alerts are evaluated by Prometheus and visible at http://localhost:9090/alerts;
+# delivery (Alertmanager, notifications) is out of scope for the local stack.
+
+groups:
+  - name: relay-slo
+    rules:
+      - alert: RelayHighErrorRate
+        # Brief: error rate below 1 % (5xx answers to chat requests).
+        expr: |
+          sum(rate(relay_http_requests_total{route="/v1/chat/completions", status=~"5.."}[5m]))
+            / sum(rate(relay_http_requests_total{route="/v1/chat/completions"}[5m]))
+          > 0.01
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "More than 1% of chat requests fail with 5xx"
+
+      - alert: RelayTTFTp95AboveSLO
+        # Brief: time to first token p95 below 1 s.
+        expr: |
+          histogram_quantile(0.95, sum by (le, model) (rate(relay_ttft_seconds_bucket[5m]))) > 1
+        for: 10m
+        labels: { severity: page }
+        annotations:
+          summary: "TTFT p95 for {{ $labels.model }} is above the 1 s SLO"
+
+      - alert: RelayITLp95AboveSLO
+        # Brief: inter-token latency p95 below 100 ms.
+        expr: |
+          histogram_quantile(0.95, sum by (le, model) (rate(relay_inter_token_latency_seconds_bucket[5m]))) > 0.1
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Inter-token latency p95 for {{ $labels.model }} is above 100 ms"
+
+  - name: relay-health
+    rules:
+      - alert: RelayDown
+        expr: up{job="relay"} == 0
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: "Prometheus cannot scrape Relay"
+
+      - alert: RelayCircuitBreakerOpen
+        expr: max by (backend) (relay_circuit_breaker_state) == 2
+        for: 1m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Circuit breaker for {{ $labels.backend }} is open: traffic is falling back"
+
+      - alert: RelayRateLimiterDegraded
+        # ADR-002: limits are enforced per instance while Redis is unreachable.
+        expr: relay_ratelimiter_degraded == 1
+        for: 1m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Redis unreachable: rate limits enforced per instance"
+
+      - alert: RelayLedgerDroppingEvents
+        expr: increase(relay_ledger_events_total{outcome="dropped"}[5m]) > 0
+        labels: { severity: ticket }
+        annotations:
+          summary: "Usage ledger dropped events (queue full): cost data is incomplete"

@@ -3,7 +3,7 @@
 
 COMPOSE = docker compose -f deploy/compose/docker-compose.yml
 
-.PHONY: help setup test lint format models models-all up up-gpu down ps logs run serve test-contract test-integration db-shell redis-cli db-reset db-apply
+.PHONY: help setup test lint format models models-all up up-gpu down ps logs run serve test-contract test-integration test-alerts db-shell redis-cli db-reset db-apply
 
 help:  ## List targets
 	@uv run python -c "import re; [print(f\"{m[0]:<12} {m[1]}\") for m in re.findall(r\"^([a-z-]+):.*## (.*)$$\", open(\"Makefile\").read(), re.M)]"
@@ -19,6 +19,10 @@ test-contract:  ## OpenAI SDK contract tests (needs `make up` and `make run`)
 
 test-integration:  ## Tests against the Compose services (needs `make up`)
 	uv run pytest -m integration -v
+
+test-alerts:  ## Validate Prometheus config and unit-test the alert rules (promtool in Docker)
+	docker run --rm --entrypoint promtool -v "$(CURDIR)/monitoring:/etc/prometheus:ro" -w //etc/prometheus prom/prometheus:v3.15.0 check config prometheus.yml
+	docker run --rm --entrypoint promtool -v "$(CURDIR)/monitoring:/etc/prometheus:ro" -w //etc/prometheus prom/prometheus:v3.15.0 test rules rules.test.yml
 
 lint:  ## Lint and check formatting
 	uv run ruff check .
