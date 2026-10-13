@@ -183,7 +183,7 @@ make run    # Relay on http://localhost:8000, auto-reloads on changes in src/
 - Endpoints so far: `GET /healthz` (liveness), `GET /v1/models`, `GET /v1/models/{id}` and `POST /v1/chat/completions` (non-streaming and `stream: true`). Invalid request → 400 naming the field (`param`); unknown model → 404 `model_not_found`; backend down → 502; timeout → 504; unknown path / wrong method → 404 / 405; a bug in Relay → 500 `server_error` (traceback in the server log only). A backend's own error keeps its status; its body passes through if OpenAI-shaped and is otherwise wrapped as `backend_error`. **Every** error is in OpenAI format, so the SDK raises the matching class (`BadRequestError`, `NotFoundError`, `RateLimitError`, `InternalServerError`, or `APIError` mid-stream); `tests/unit/test_errors.py` checks each path through the real SDK. Swagger at http://localhost:8000/docs has a pre-filled example body.
 
 ### Model routing config (`config/relay.yaml`)
-- `backends:` name → `engine` (`llamacpp` | `vllm`), `url`, optional `connect_timeout_s` (5), `read_timeout_s` (120).
+- `backends:` name → `engine` (`llamacpp` | `vllm`), `url`, optional timeouts in seconds: `connect_timeout_s` (5), `first_token_timeout_s` (60), `idle_timeout_s` (30), `total_timeout_s` (300). Each must be ≤ the total.
 - `models:` public model name → `backends:` (names, **in order of preference**), optional `owned_by`. Relay currently uses the first backend; fallback down the list comes with routing.
 - **Validated at startup; unknown keys are rejected.** A typo stops Relay with a clear error, e.g. `model 'qwen2.5-1.5b-instruct' refers to undefined backends: ['llamacpp-cpuu']` (exit code 1).
 - Each backend must serve the model under its **public** name (llama.cpp `--alias`, vLLM `--served-model-name`), so Relay never has to rewrite `model`.
@@ -255,7 +255,8 @@ Start `.venv/Scripts/uvicorn.exe` directly, not via `uv run`: killing the `uv ru
 - **Before the first byte:** backend unreachable/timeout → normal 502/504 JSON; a backend 4xx/5xx keeps its status and body.
 - **Mid-stream failure:** status is already 200, so Relay sends `data: {"error": {...}}` and closes; the OpenAI SDK raises it as an `APIError`. No `[DONE]` follows.
 - **Client disconnect cancels the engine's work.** Reproduce: stream a 400-token request, read 5 events, close the connection; llama.cpp logs `stop: cancel task` and releases the slot at ~46 tokens.
-- **Read timeout = maximum silence between chunks**, not total stream duration (`read_timeout_s` per backend in `config/relay.yaml`).
+- **Timeouts per backend:** *connect* (reach it), *first token* (it starts answering: queueing + prompt processing), *idle* (maximum silence between streamed events), *total* (whole request). A slow but steady stream is fine; a silent one is cut by *idle*.
+- **Retries only before the first token** ([ADR-003](adr/003-streaming-retry-policy.md)): `stream()` returns once the backend produced its first event, so everything before that can be retried invisibly. Retried: unreachable backend (incl. connect timeout) and HTTP 503, up to 3 attempts with jittered exponential backoff (`retry:` in `config/relay.yaml`). Not retried: 4xx, other 5xx, first-token/total timeouts. Each retry logs `relay.routing retrying after …`. Observed: against a stopped backend on Windows each refused connection takes ~2 s, so 3 attempts ≈ 6 s before the 502.
 
 ## 8. Testing
 

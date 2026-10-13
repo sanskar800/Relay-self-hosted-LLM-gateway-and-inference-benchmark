@@ -99,7 +99,7 @@ def test_backend_error_before_streaming_keeps_its_status() -> None:
 
 @pytest.mark.parametrize(
     ("exc", "status"),
-    [(httpx.ConnectError("refused"), 502), (httpx.ConnectTimeout("slow"), 504)],
+    [(httpx.ConnectError("refused"), 502), (httpx.ReadTimeout("slow"), 504)],
 )
 def test_backend_unreachable_before_streaming_is_a_json_error(exc: Exception, status: int) -> None:
     def handler(request: httpx.Request) -> httpx.Response:

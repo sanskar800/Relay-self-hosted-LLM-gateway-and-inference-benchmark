@@ -44,8 +44,7 @@ def build_backends(
         name: ENGINES[cfg.engine](
             name,
             str(cfg.url),
-            connect_timeout_s=cfg.connect_timeout_s,
-            read_timeout_s=cfg.read_timeout_s,
+            timeouts=cfg.timeouts(),
             transport=transport,
         )
         for name, cfg in config.backends.items()

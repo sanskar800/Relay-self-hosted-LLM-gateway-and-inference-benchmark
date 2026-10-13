@@ -7,11 +7,11 @@ An ADR records **one** significant decision: the context, the options considered
 | # | Title | Status |
 |---|---|---|
 | [002](002-rate-limit-failure-behaviour.md) | Rate limiting when Redis is unavailable: fail open to local per-instance limits | Accepted (2026-10-11) |
+| [003](003-streaming-retry-policy.md) | Retry only before the first token: unreachable/503 only, few jittered attempts | Accepted (2026-10-13) |
 
 Still expected (created only when decided):
 
 - ADR-001: Inference engines and benchmark hardware (vLLM + llama.cpp; free Colab GPU instead of rented GPU)
-- ADR-003: Streaming retry policy (no retries after the first token)
 
 ## Template
 

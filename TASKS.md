@@ -185,11 +185,11 @@ Goal: **every request is attributed to a tenant, limited and recorded.**
 
 Goal: **Relay survives backend failure and you can see what it is doing.**
 
-- [ ] `[MUST]` **4.1 Per-backend timeouts** (connect, first byte, idle between chunks, total)
+- [x] `[MUST]` **4.1 Per-backend timeouts** (done 2026-10-13) (connect, first byte, idle between chunks, total)
     - Why: a hung backend must not hold client connections forever.
     - Files: `src/relay/backends/base.py`, `config/relay.yaml`
     - Verify: a fake slow backend triggers 504 within the configured time.
-- [ ] `[MUST]` **4.2 Retries only before the first token (ADR-003)**
+- [x] `[MUST]` **4.2 Retries only before the first token (ADR-003)** (done 2026-10-13)
     - Why: once tokens reach the user, a retry would produce duplicated or contradictory text.
     - Expected result: retry with exponential backoff + jitter on connect errors / 503 only, before any byte is sent; mid-stream failure leads to an SSE error event and no retry.
     - Files: `src/relay/routing/retry.py`, `docs/adr/003-streaming-retry-policy.md`

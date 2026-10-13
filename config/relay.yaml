@@ -15,6 +15,15 @@ backends:
     engine: llamacpp
     url: http://127.0.0.1:8082
 
+# Optional per backend: connect_timeout_s (5), first_token_timeout_s (60),
+# idle_timeout_s (30), total_timeout_s (300).
+
+# Retries before the first token only (ADR-003). Defaults shown.
+retry:
+  max_attempts: 3       # including the first try
+  base_delay_s: 0.1     # backoff ceiling doubles per retry, with full jitter
+  max_delay_s: 1.0
+
 limits:
   max_body_bytes: 1048576   # 1 MB; larger bodies get 413 without being read into memory
   max_messages: 256

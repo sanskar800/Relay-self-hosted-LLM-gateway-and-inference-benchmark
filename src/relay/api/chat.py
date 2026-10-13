@@ -37,6 +37,7 @@ from relay.config import PricingConfig
 from relay.limits.estimate import estimate_prompt_tokens, reservation
 from relay.limits.responses import rate_limited_error, ratelimit_headers
 from relay.limits.token_bucket import RateLimiter, RateLimiterUnavailable
+from relay.routing.retry import call_with_retry
 
 log = logging.getLogger("relay.limits")
 router = APIRouter()
@@ -80,6 +81,7 @@ async def chat_completions(payload: ChatCompletionRequest, request: Request) -> 
     # First backend in preference order (fallback down the list comes with routing).
     backend: Backend = request.app.state.backends[config.models[payload.model].backends[0]]
     sink: Callable[[UsageEvent], None] = request.app.state.usage_sink
+    retry_policy = config.retry.policy()
     pricing: PricingConfig = request.app.state.pricing
     request_id, occurred_at, started = uuid.uuid4(), datetime.now(UTC), time.perf_counter()
     headers = {**rl_headers, "x-request-id": str(request_id)}
@@ -112,11 +114,13 @@ async def chat_completions(payload: ChatCompletionRequest, request: Request) -> 
     )
     try:
         if payload.stream:
-            # Phase 1: nothing has been sent to the client yet, so a failure here can
-            # still be an ordinary HTTP error response.
-            upstream = await backend.stream(outgoing)
+            # Phase 1: stream() returns once the backend produced its first event. Until
+            # then nothing has reached the client, so failures may be retried (ADR-003)
+            # and otherwise become an ordinary HTTP error response.
+            upstream = await call_with_retry(lambda: backend.stream(outgoing), retry_policy)
         else:
-            result = await backend.chat(outgoing)
+            # Nothing is sent to the client before the whole answer exists.
+            result = await call_with_retry(lambda: backend.chat(outgoing), retry_policy)
             await finish(result.status_code, usage_from_completion(result.content), None)
             return Response(
                 result.content, result.status_code, media_type=result.content_type, headers=headers

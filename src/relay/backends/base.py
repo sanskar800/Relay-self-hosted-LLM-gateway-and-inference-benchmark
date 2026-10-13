@@ -18,11 +18,18 @@ class BackendError(Exception):
 
 
 class BackendUnavailable(BackendError):
-    """No response at all (connection refused, reset, DNS). Safe to retry elsewhere."""
+    """Could not get a response started (refused, reset, connect timeout, closed early).
+
+    Nothing reached the client and the backend did no work for us: safe to retry.
+    """
 
 
 class BackendTimeout(BackendError):
-    """No response within the timeout, before any data was sent to the client."""
+    """The backend accepted the request but did not answer in time (first token / total).
+
+    Nothing reached the client, but the backend may still be working on it, so the same
+    backend is not retried (that would double its load); another backend may be tried.
+    """
 
 
 class BackendHTTPError(BackendError):
@@ -41,6 +48,16 @@ class BackendStreamError(BackendError):
     def __init__(self, backend: str, message: str, *, timeout: bool) -> None:
         super().__init__(backend, message)
         self.timeout = timeout
+
+
+@dataclass(frozen=True)
+class Timeouts:
+    """How long to wait, per backend, at each stage of a request (seconds)."""
+
+    connect: float = 5.0  # establish the TCP connection
+    first_token: float = 60.0  # until the first streamed event (queueing + prompt processing)
+    idle: float = 30.0  # maximum silence between streamed events
+    total: float = 300.0  # the whole request, including generation
 
 
 @dataclass(frozen=True)
@@ -76,7 +93,12 @@ class Backend(Protocol):
         ...
 
     async def stream(self, body: bytes) -> BackendStream:
-        """Start a streaming chat completion; returns once the backend answered 200."""
+        """Start a streaming chat completion.
+
+        Returns only once the backend has produced its FIRST event. Every failure up to
+        that point raises BackendUnavailable / BackendTimeout / BackendHTTPError, while
+        nothing has been sent to the client: this is the boundary for retries (ADR-003).
+        """
         ...
 
     async def health(self) -> bool:

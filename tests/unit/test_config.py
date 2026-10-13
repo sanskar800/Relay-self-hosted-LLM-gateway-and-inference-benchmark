@@ -8,7 +8,7 @@ from relay.config import RelayConfig, Settings, load_config
 VALID = {
     "backends": {
         "cpu": {"engine": "llamacpp", "url": "http://127.0.0.1:8081"},
-        "gpu": {"engine": "llamacpp", "url": "http://127.0.0.1:8082", "read_timeout_s": 30},
+        "gpu": {"engine": "llamacpp", "url": "http://127.0.0.1:8082", "idle_timeout_s": 30},
     },
     "models": {"qwen": {"backends": ["gpu", "cpu"]}},
 }
@@ -25,7 +25,7 @@ def test_valid_config_keeps_order_and_defaults() -> None:
     config = RelayConfig.model_validate(VALID)
     assert config.models["qwen"].backends == ["gpu", "cpu"]  # order = preference
     assert config.backends["cpu"].connect_timeout_s == 5.0
-    assert config.backends["gpu"].read_timeout_s == 30
+    assert config.backends["gpu"].idle_timeout_s == 30
 
 
 @pytest.mark.parametrize(
@@ -36,7 +36,7 @@ def test_valid_config_keeps_order_and_defaults() -> None:
         (lambda c: c["models"]["qwen"].update(backends=["cpu", "cpu"]), "more than once"),
         (lambda c: c["models"]["qwen"].update(backends=[]), "at least 1 item"),
         (lambda c: c["backends"]["cpu"].update(url="not a url"), "URL"),
-        (lambda c: c["backends"]["cpu"].update(read_timeout_s=0), "greater than 0"),
+        (lambda c: c["backends"]["cpu"].update(idle_timeout_s=0), "greater than 0"),
         (lambda c: c["backends"]["cpu"].update(timeout=5), "Extra inputs are not permitted"),
         (lambda c: c.update(model={}), "Extra inputs are not permitted"),
         (lambda c: c.update(models={}), "at least 1 item"),

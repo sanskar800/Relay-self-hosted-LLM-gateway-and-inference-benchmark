@@ -12,6 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from relay.backends import ENGINES
+from relay.backends.base import Timeouts
+from relay.routing.retry import RetryPolicy
 
 
 class Settings(BaseSettings):
@@ -35,15 +37,32 @@ class _Strict(BaseModel):
 class BackendConfig(_Strict):
     engine: str
     url: HttpUrl
+    # Timeouts (seconds); see relay.backends.base.Timeouts for what each one bounds.
     connect_timeout_s: float = Field(default=5.0, gt=0)
-    # For streams: the maximum silence between chunks, not the total duration.
-    read_timeout_s: float = Field(default=120.0, gt=0)
+    first_token_timeout_s: float = Field(default=60.0, gt=0)
+    idle_timeout_s: float = Field(default=30.0, gt=0)
+    total_timeout_s: float = Field(default=300.0, gt=0)
 
     @model_validator(mode="after")
     def _known_engine(self) -> Self:
         if self.engine not in ENGINES:
             raise ValueError(f"unknown engine {self.engine!r}; expected one of {sorted(ENGINES)}")
         return self
+
+    @model_validator(mode="after")
+    def _consistent_timeouts(self) -> Self:
+        for name in ("connect_timeout_s", "first_token_timeout_s", "idle_timeout_s"):
+            if getattr(self, name) > self.total_timeout_s:
+                raise ValueError(f"{name} cannot exceed total_timeout_s")
+        return self
+
+    def timeouts(self) -> Timeouts:
+        return Timeouts(
+            connect=self.connect_timeout_s,
+            first_token=self.first_token_timeout_s,
+            idle=self.idle_timeout_s,
+            total=self.total_timeout_s,
+        )
 
 
 class ModelConfig(_Strict):
@@ -62,10 +81,22 @@ class LimitsConfig(_Strict):
     max_tokens: int = Field(default=4096, gt=0)
 
 
+class RetryConfig(_Strict):
+    """Retries before the first token (ADR-003)."""
+
+    max_attempts: int = Field(default=3, ge=1, le=10)  # including the first try
+    base_delay_s: float = Field(default=0.1, ge=0)
+    max_delay_s: float = Field(default=1.0, ge=0)
+
+    def policy(self) -> RetryPolicy:
+        return RetryPolicy(self.max_attempts, self.base_delay_s, self.max_delay_s)
+
+
 class RelayConfig(_Strict):
     backends: dict[str, BackendConfig] = Field(min_length=1)
     models: dict[str, ModelConfig] = Field(min_length=1)
     limits: LimitsConfig = LimitsConfig()
+    retry: RetryConfig = RetryConfig()
 
     @model_validator(mode="after")
     def _references_exist(self) -> Self:

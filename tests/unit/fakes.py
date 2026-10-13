@@ -41,24 +41,33 @@ class FakeBackend:
         response: BackendResponse | None = None,
         stream: FakeStream | None = None,
         error: BackendError | None = None,
+        fail_first: list[BackendError] | None = None,
         healthy: bool = True,
     ) -> None:
         self.name = name
         self._response = response or BackendResponse(200, b'{"ok": true}', "application/json")
         self._stream = stream or FakeStream([b"data: [DONE]\n\n"])
         self._error = error
+        self._fail_first = list(fail_first or [])  # raised on the first calls, in order
+        self.calls = 0
         self._healthy = healthy
         self.requests: list[bytes] = []
         self.closed = False
 
     async def chat(self, body: bytes) -> BackendResponse:
         self.requests.append(body)
+        self.calls += 1
+        if self._fail_first:
+            raise self._fail_first.pop(0)
         if self._error:
             raise self._error
         return self._response
 
     async def stream(self, body: bytes) -> FakeStream:
         self.requests.append(body)
+        self.calls += 1
+        if self._fail_first:
+            raise self._fail_first.pop(0)
         if self._error:
             raise self._error
         return self._stream
@@ -121,6 +130,8 @@ def make_config(model: str = "m", backend: str = "b1", url: str = "http://engine
         {
             "backends": {backend: {"engine": "llamacpp", "url": url}},
             "models": {model: {"backends": [backend]}},
+            # Retries without waiting, so failure-path tests stay fast.
+            "retry": {"base_delay_s": 0},
         }
     )
 

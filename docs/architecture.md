@@ -72,7 +72,7 @@ Each of those is a gateway concern. Putting them in one place means every applic
 
 ### Routing, reliability and fallback
 - **Timeouts:** connect timeout, time-to-first-byte timeout, idle-between-chunks timeout and total timeout, set per backend.
-- **Retries:** only **before the first token is sent to the client**. After that, a retry would duplicate or contradict text the user has already seen (ADR-003).
+- **Retries:** only **before the first token is sent to the client**. After that, a retry would duplicate or contradict text the user has already seen ([ADR-003](adr/003-streaming-retry-policy.md)). The boundary is explicit: a backend stream counts as started once its first event arrives.
 - **Circuit breaker:** after N consecutive failures a backend is marked *open* and skipped for a cool-down period, then probed (*half-open*). This prevents piling requests onto a dead server.
 - **Fallback:** the router tries the next backend in the model's list. The spec's paid hosted-API fallback is replaced with a **second local backend**, because this project spends no money.
 - **Graceful shutdown:** on SIGTERM, readiness goes false, new requests are refused and open streams drain up to a deadline.

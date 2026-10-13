@@ -9,6 +9,7 @@ Mimics the wire behaviour observed from llama.cpp:
 Use `FakeEngine(...).transport()` as the httpx transport under a real backend.
 """
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 
@@ -18,9 +19,24 @@ MODEL = "fake-model"
 
 
 class FakeEngine:
-    def __init__(self, tokens: list[str] | None = None, prompt_tokens: int = 7) -> None:
+    def __init__(
+        self,
+        tokens: list[str] | None = None,
+        prompt_tokens: int = 7,
+        *,
+        first_event_delay_s: float = 0.0,
+        token_delay_s: float = 0.0,
+        stall_after: int | None = None,
+        stall_s: float = 0.0,
+    ) -> None:
         self.tokens = tokens if tokens is not None else ["Hel", "lo", "!"]
         self.prompt_tokens = prompt_tokens
+        # Latency injection: before the first event, between tokens, and a one-off stall
+        # after `stall_after` tokens (to simulate a backend that hangs mid-stream).
+        self.first_event_delay_s = first_event_delay_s
+        self.token_delay_s = token_delay_s
+        self.stall_after = stall_after
+        self.stall_s = stall_s
         self.requests: list[dict] = []  # parsed JSON bodies, in order
 
     def transport(self) -> httpx.MockTransport:
@@ -82,9 +98,13 @@ class FakeEngine:
         return b"data: " + json.dumps(chunk).encode() + b"\n\n"
 
     async def _events(self, body: dict, include_usage: bool) -> AsyncIterator[bytes]:
+        await asyncio.sleep(self.first_event_delay_s)
         delta = {"role": "assistant", "content": None}
         yield self._chunk(body, [{"index": 0, "delta": delta, "finish_reason": None}])
-        for token in self.tokens:
+        for i, token in enumerate(self.tokens):
+            if i == self.stall_after:
+                await asyncio.sleep(self.stall_s)
+            await asyncio.sleep(self.token_delay_s)
             yield self._chunk(
                 body, [{"index": 0, "delta": {"content": token}, "finish_reason": None}]
             )

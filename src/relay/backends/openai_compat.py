@@ -1,5 +1,6 @@
 """Shared HTTP logic for engines that speak the OpenAI chat-completions protocol."""
 
+import asyncio
 from collections.abc import AsyncIterator
 
 import httpx
@@ -10,6 +11,7 @@ from relay.backends.base import (
     BackendStreamError,
     BackendTimeout,
     BackendUnavailable,
+    Timeouts,
 )
 from relay.backends.sse import iter_sse_events
 
@@ -28,24 +30,34 @@ class OpenAICompatBackend:
         name: str,
         base_url: str,
         *,
-        connect_timeout_s: float = 5.0,
-        read_timeout_s: float = 120.0,
+        timeouts: Timeouts | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.name = name
-        # For streams the read timeout applies to each read: it is the maximum silence
-        # between chunks, not the total duration.
+        self.timeouts = timeouts or Timeouts()
+        # httpx's read timeout applies to each socket read: for streams that is the idle
+        # timeout (maximum silence between chunks).
         self._client = httpx.AsyncClient(
             base_url=base_url,
-            timeout=httpx.Timeout(read_timeout_s, connect=connect_timeout_s),
+            timeout=httpx.Timeout(self.timeouts.idle, connect=self.timeouts.connect),
             transport=transport,
         )
 
     async def chat(self, body: bytes) -> BackendResponse:
+        # Non-streaming: the engine sends nothing until the answer is complete, so the
+        # only meaningful bound is the total timeout.
+        t = self.timeouts
         try:
-            response = await self._client.post(CHAT_PATH, content=body, headers=JSON_HEADERS)
+            response = await self._client.post(
+                CHAT_PATH,
+                content=body,
+                headers=JSON_HEADERS,
+                timeout=httpx.Timeout(t.total, connect=t.connect),
+            )
+        except httpx.ConnectTimeout as exc:
+            raise BackendUnavailable(self.name, "connect timeout") from exc
         except httpx.TimeoutException as exc:
-            raise BackendTimeout(self.name, "timed out") from exc
+            raise BackendTimeout(self.name, f"no answer within {t.total}s") from exc
         except httpx.RequestError as exc:
             raise BackendUnavailable(self.name, repr(exc)) from exc
         content_type = response.headers.get("content-type", "application/json")
@@ -54,19 +66,36 @@ class OpenAICompatBackend:
         return BackendResponse(response.status_code, response.content, content_type)
 
     async def stream(self, body: bytes) -> "OpenAICompatStream":
+        """Send the request and wait for the FIRST event before returning (see Backend)."""
+        t = self.timeouts
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + t.total
         request = self._client.build_request("POST", CHAT_PATH, content=body, headers=JSON_HEADERS)
+        response: httpx.Response | None = None
         try:
-            response = await self._client.send(request, stream=True)
-        except httpx.TimeoutException as exc:
-            raise BackendTimeout(self.name, "timed out") from exc
-        except httpx.RequestError as exc:
-            raise BackendUnavailable(self.name, repr(exc)) from exc
-        if response.status_code != 200:
-            content = await response.aread()
-            await response.aclose()
-            content_type = response.headers.get("content-type", "application/json")
-            raise BackendHTTPError(self.name, response.status_code, content, content_type)
-        return OpenAICompatStream(self.name, response)
+            async with asyncio.timeout(t.first_token):
+                response = await self._client.send(request, stream=True)
+                if response.status_code != 200:
+                    content = await response.aread()
+                    content_type = response.headers.get("content-type", "application/json")
+                    raise BackendHTTPError(self.name, response.status_code, content, content_type)
+                events = iter_sse_events(response.aiter_bytes())
+                first = await anext(events)
+        except BaseException as exc:
+            if response is not None:
+                await response.aclose()
+            if isinstance(exc, BackendHTTPError):
+                raise
+            if isinstance(exc, httpx.ConnectTimeout):
+                raise BackendUnavailable(self.name, "connect timeout") from exc
+            if isinstance(exc, (TimeoutError, httpx.TimeoutException)):
+                raise BackendTimeout(self.name, f"no first event within {t.first_token}s") from exc
+            if isinstance(exc, StopAsyncIteration):
+                raise BackendUnavailable(self.name, "stream closed before any event") from exc
+            if isinstance(exc, httpx.RequestError):
+                raise BackendUnavailable(self.name, repr(exc)) from exc
+            raise
+        return OpenAICompatStream(self.name, response, events, first, deadline)
 
     async def health(self) -> bool:
         try:
@@ -80,18 +109,44 @@ class OpenAICompatBackend:
 
 
 class OpenAICompatStream:
-    def __init__(self, backend: str, response: httpx.Response) -> None:
+    """A stream whose first event has already arrived."""
+
+    def __init__(
+        self,
+        backend: str,
+        response: httpx.Response,
+        events: AsyncIterator[bytes],
+        first: bytes,
+        deadline: float,
+    ) -> None:
         self._backend = backend
         self._response = response
+        self._events = events
+        self._first = first
+        self._deadline = deadline  # event-loop time by which the whole request must end
 
     async def events(self) -> AsyncIterator[bytes]:
-        try:
-            async for event in iter_sse_events(self._response.aiter_bytes()):
-                yield event
-        except httpx.TimeoutException as exc:
-            raise BackendStreamError(self._backend, "stopped sending", timeout=True) from exc
-        except httpx.TransportError as exc:
-            raise BackendStreamError(self._backend, "connection lost", timeout=False) from exc
+        yield self._first
+        loop = asyncio.get_running_loop()
+        while True:
+            remaining = self._deadline - loop.time()
+            if remaining <= 0:
+                raise BackendStreamError(self._backend, "total timeout", timeout=True)
+            try:
+                # The deadline wraps only this read, never a `yield`: a timeout spanning
+                # a yield would fire while the caller (sending to the client) runs.
+                async with asyncio.timeout(remaining):
+                    event = await anext(self._events)
+            except StopAsyncIteration:
+                return
+            except TimeoutError as exc:
+                raise BackendStreamError(self._backend, "total timeout", timeout=True) from exc
+            except httpx.TimeoutException as exc:
+                raise BackendStreamError(self._backend, "idle timeout", timeout=True) from exc
+            except httpx.TransportError as exc:
+                raise BackendStreamError(self._backend, "connection lost", timeout=False) from exc
+            yield event
 
     async def aclose(self) -> None:
+        await self._events.aclose()  # type: ignore[attr-defined]  (an async generator)
         await self._response.aclose()

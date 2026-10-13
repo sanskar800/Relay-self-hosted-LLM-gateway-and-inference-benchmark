@@ -59,7 +59,7 @@ async def test_error_status_becomes_backend_http_error_with_body() -> None:
     [
         (httpx.ConnectError("refused"), BackendUnavailable),
         (httpx.RemoteProtocolError("reset"), BackendUnavailable),
-        (httpx.ConnectTimeout("slow"), BackendTimeout),
+        (httpx.ConnectTimeout("slow"), BackendUnavailable),  # never reached it: retryable
         (httpx.ReadTimeout("slow"), BackendTimeout),
     ],
 )
