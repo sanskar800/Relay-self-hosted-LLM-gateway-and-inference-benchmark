@@ -209,11 +209,11 @@ Goal: **Relay survives backend failure and you can see what it is doing.**
     - Expected result: on SIGTERM, `/readyz` returns 503, new requests are rejected and in-flight streams drain up to a deadline.
     - Files: `src/relay/main.py`
     - Verify: start a long stream, send SIGTERM, and the stream completes.
-- [ ] `[MUST]` **4.6 Structured JSON logs**
+- [x] `[MUST]` **4.6 Structured JSON logs** (done 2026-10-13)
     - Expected result: structlog JSON with request ID, tenant, model, backend, status and durations; **no prompt bodies** by default.
     - Files: `src/relay/telemetry/logging.py`
     - Verify: log line inspection; a test asserts the prompt text is absent.
-- [ ] `[MUST]` **4.7 Prometheus metrics**
+- [x] `[MUST]` **4.7 Prometheus metrics** (done 2026-10-13)
     - Why: latency percentiles and per-tenant usage are the product.
     - Expected result: `/metrics` with request count by status/backend, TTFT and ITL histograms, output tokens, gateway overhead histogram, in-flight per backend, breaker state gauge, tokens and £ per tenant, ledger drops.
     - Files: `src/relay/telemetry/metrics.py`

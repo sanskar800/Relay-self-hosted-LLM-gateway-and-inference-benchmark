@@ -40,6 +40,7 @@ async def call_with_retry[T](
     *,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     rand: Callable[[], float] = random.random,
+    on_retry: Callable[[BackendError], None] = lambda exc: None,
 ) -> T:
     """Run `attempt` until it succeeds, fails with a non-retryable error, or runs out."""
     for n in range(policy.max_attempts):
@@ -51,5 +52,6 @@ async def call_with_retry[T](
             delay = policy.delay(n, rand)
             log.warning("retrying after %s (attempt %d/%d, in %.3fs)",
                         exc, n + 2, policy.max_attempts, delay)  # fmt: skip
+            on_retry(exc)
             await sleep(delay)
     raise AssertionError("unreachable")  # pragma: no cover

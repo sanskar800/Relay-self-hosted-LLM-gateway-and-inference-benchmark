@@ -73,6 +73,9 @@ class StreamUsage:
         # time.perf_counter() when the first chunk WITH content arrived (the first
         # chunk usually only carries the role, so it does not count for TTFT).
         self.first_content_at: float | None = None
+        # Seconds between consecutive content chunks (inter-token latency samples).
+        self.token_gaps: list[float] = []
+        self._last_content_at: float | None = None
 
     def observe(self, event: bytes) -> bool:
         """Record what the event says; return False if it must not reach the client."""
@@ -88,8 +91,12 @@ class StreamUsage:
 
         choices = chunk.get("choices") or []
         if any((c.get("delta") or {}).get("content") for c in choices if isinstance(c, dict)):
+            now = time.perf_counter()
             if self.first_content_at is None:
-                self.first_content_at = time.perf_counter()
+                self.first_content_at = now
+            if self._last_content_at is not None:
+                self.token_gaps.append(now - self._last_content_at)
+            self._last_content_at = now
             self.content_chunks += 1
 
         usage = chunk.get("usage")

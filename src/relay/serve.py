@@ -51,6 +51,9 @@ def main() -> None:
         host=settings.host,
         port=settings.port,
         timeout_graceful_shutdown=settings.drain_timeout_s,
+        # Keep Relay's JSON logging: by default uvicorn.Config re-applies its own
+        # logging config, replacing the formatter on uvicorn's loggers.
+        log_config=None,
     )
     GracefulServer(config, app.state.lifecycle, settings.shutdown_grace_s).run()
 

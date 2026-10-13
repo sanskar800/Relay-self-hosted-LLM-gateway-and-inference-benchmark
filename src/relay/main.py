@@ -1,6 +1,5 @@
 """Relay gateway: FastAPI app that proxies OpenAI-compatible requests to backends."""
 
-import logging
 import time
 from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import AsyncExitStack, asynccontextmanager
@@ -8,7 +7,8 @@ from contextlib import AsyncExitStack, asynccontextmanager
 import httpx
 import redis.asyncio as aioredis
 from fastapi import Depends, FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from relay.accounting.db import create_pool
 from relay.accounting.ledger import UsageLedger
@@ -25,19 +25,9 @@ from relay.limits.failover import FailoverRateLimiter
 from relay.limits.token_bucket import InMemoryRateLimiter, RateLimiter, RedisRateLimiter
 from relay.routing.circuit_breaker import CircuitBreaker
 from relay.routing.router import Router
-
-
-def configure_logging() -> None:
-    """Minimal console logging for Relay's own loggers (structured JSON logs come later).
-
-    uvicorn configures only its own loggers, so without this our INFO lines are dropped.
-    """
-    logger = logging.getLogger("relay")
-    if not logger.handlers:
-        handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s %(message)s"))
-        logger.addHandler(handler)
-        logger.setLevel(logging.INFO)
+from relay.telemetry.logging import configure_logging
+from relay.telemetry.metrics import Metrics, StateCollector
+from relay.telemetry.middleware import TelemetryMiddleware
 
 
 def build_backends(
@@ -90,7 +80,9 @@ def create_app(
         app.state.started_at = int(time.time())
         # One circuit breaker per backend; the router walks each model's backend list.
         breakers = {name: CircuitBreaker(name, config.breaker.policy()) for name in config.backends}
-        app.state.router = Router(config, app.state.backends, breakers, config.retry.policy())
+        app.state.router = Router(
+            config, app.state.backends, breakers, config.retry.policy(), metrics=metrics
+        )
 
         async with AsyncExitStack() as stack:
             for backend in app.state.backends.values():
@@ -130,10 +122,23 @@ def create_app(
     app = FastAPI(title="Relay", lifespan=lifespan)
     # Created with the app (not in the lifespan) so the server can flip it on a signal.
     lifecycle = app.state.lifecycle = Lifecycle()
+    metrics = app.state.metrics = Metrics()  # one registry per app (tests build many apps)
+    metrics.watch(
+        StateCollector(
+            breakers=lambda: _breaker_states(app),
+            in_flight=lambda: lifecycle.in_flight,
+            limiter_degraded=lambda: getattr(
+                getattr(app.state, "rate_limiter", None), "degraded", None
+            ),
+            ledger=lambda: _ledger_stats(app),
+        )
+    )
     install_error_handlers(app)
+    # Middleware added later wraps earlier ones, so the order of requests is:
+    # Telemetry (request id, access log) -> Lifecycle (draining) -> BodySize -> app.
     app.add_middleware(BodySizeLimitMiddleware, max_bytes=config.limits.max_body_bytes)
-    # Added last = outermost: while draining, new API requests are refused before any work.
     app.add_middleware(LifecycleMiddleware, lifecycle=lifecycle)
+    app.add_middleware(TelemetryMiddleware, metrics=metrics)
     # Every API route requires an API key; /healthz stays open for load balancers.
     authenticated = [Depends(require_api_key)]
     app.include_router(chat.router, dependencies=authenticated)
@@ -147,15 +152,36 @@ def create_app(
     @app.get("/readyz", responses={503: {"description": "Draining: send no new traffic"}})
     async def readyz() -> JSONResponse:
         """Readiness: should this instance receive new traffic? 503 once shutdown starts."""
-        router = getattr(app.state, "router", None)
         body = {
             "status": "draining" if lifecycle.draining else "ready",
             "in_flight": lifecycle.in_flight,
-            "breakers": {n: b.state.value for n, b in router.breakers.items()} if router else {},
+            "breakers": _breaker_states(app),
         }
         return JSONResponse(body, status_code=503 if lifecycle.draining else 200)
 
+    @app.get("/metrics", include_in_schema=False)
+    async def prometheus_metrics() -> Response:
+        """Prometheus scrape endpoint (bind Relay to an internal network in production)."""
+        return Response(generate_latest(metrics.registry), media_type=CONTENT_TYPE_LATEST)
+
     return app
+
+
+def _breaker_states(app: FastAPI) -> dict[str, str]:
+    router = getattr(app.state, "router", None)
+    return {n: b.state.value for n, b in router.breakers.items()} if router else {}
+
+
+def _ledger_stats(app: FastAPI) -> dict[str, int] | None:
+    ledger = getattr(app.state, "ledger", None)
+    if ledger is None:
+        return None
+    return {
+        "queued": ledger.queued,
+        "written": ledger.written,
+        "dropped": ledger.dropped,
+        "rejected": ledger.rejected,
+    }
 
 
 app = create_app()

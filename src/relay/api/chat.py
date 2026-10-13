@@ -3,7 +3,6 @@
 import json
 import logging
 import time
-import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import aclosing
 from datetime import UTC, datetime
@@ -37,6 +36,7 @@ from relay.limits.estimate import estimate_prompt_tokens, reservation
 from relay.limits.responses import rate_limited_error, ratelimit_headers
 from relay.limits.token_bucket import RateLimiter, RateLimiterUnavailable
 from relay.routing.router import NoBackendAvailable, Router
+from relay.telemetry.metrics import Metrics
 
 log = logging.getLogger("relay.limits")
 router = APIRouter()
@@ -61,6 +61,15 @@ async def chat_completions(payload: ChatCompletionRequest, request: Request) -> 
     body = await request.body()
     config = request.app.state.config
     principal: Principal = request.state.principal
+    metrics: Metrics = request.app.state.metrics
+    # Fields for this request's access log line (written by TelemetryMiddleware).
+    log_fields: dict = request.state.log
+    log_fields.update(
+        tenant=principal.tenant_id,
+        key=principal.key_prefix,
+        model=payload.model,
+        stream=payload.stream,
+    )
     if limit_error := check_request_limits(payload, config.limits):
         return limit_error
     # Tenant policy: unknown and forbidden models get the same 404; then the token cap.
@@ -74,33 +83,48 @@ async def chat_completions(payload: ChatCompletionRequest, request: Request) -> 
     limiter: RateLimiter = request.app.state.rate_limiter
     decision = await limiter.acquire(principal, reserved)
     if not decision.allowed:
+        if decision.too_large:
+            kind = "too_large"
+        else:
+            kind = "requests" if decision.remaining_requests < 1 else "tokens"
+        metrics.rate_limited.labels(principal.tenant_id, kind).inc()
         raise rate_limited_error(decision, reserved)
-    rl_headers = ratelimit_headers(decision)
+    headers = ratelimit_headers(decision)
 
     router: Router = request.app.state.router
     sink: Callable[[UsageEvent], None] = request.app.state.usage_sink
     pricing: PricingConfig = request.app.state.pricing
-    request_id, occurred_at, started = uuid.uuid4(), datetime.now(UTC), time.perf_counter()
-    headers = {**rl_headers, "x-request-id": str(request_id)}
+    # Set by TelemetryMiddleware at the very start of the request (before auth).
+    request_id, started = request.state.request_id, request.state.started
+    occurred_at = datetime.now(UTC)
     # Which backend served (or last failed) the request; for the ledger and a header.
     served_by = config.models[payload.model].backends[0]
+    outcome = {"stream_error": False}
 
-    async def finish(status: int, usage: Usage | None, first_content_at: float | None) -> None:
-        """Hand the usage event to the ledger and settle the rate-limit reservation."""
+    async def finish(status: int, usage: Usage | None, stream: StreamUsage | None) -> None:
+        """Ledger event, metrics and log fields; then settle the rate-limit reservation."""
         record = UsageRecord(payload.model, served_by, payload.stream, status, *(usage or MISSING))
-        sink(
-            UsageEvent(
-                request_id=request_id,
-                occurred_at=occurred_at,
-                tenant_id=principal.tenant_id,
-                api_key_id=principal.key_id,
-                usage=record,
-                ttft_ms=_ms(first_content_at - started) if first_content_at else None,
-                duration_ms=_ms(time.perf_counter() - started),
-                cost_gbp=pricing.cost_gbp(
-                    payload.model, record.prompt_tokens, record.completion_tokens
-                ),
-            )
+        first = stream.first_content_at if stream else None
+        event = UsageEvent(
+            request_id=request_id,
+            occurred_at=occurred_at,
+            tenant_id=principal.tenant_id,
+            api_key_id=principal.key_id,
+            usage=record,
+            ttft_ms=_ms(first - started) if first else None,
+            duration_ms=_ms(time.perf_counter() - started),
+            cost_gbp=pricing.cost_gbp(
+                payload.model, record.prompt_tokens, record.completion_tokens
+            ),
+        )
+        sink(event)
+        _observe(metrics, event, stream, outcome["stream_error"])
+        log_fields.update(
+            backend=served_by,
+            prompt_tokens=record.prompt_tokens,
+            completion_tokens=record.completion_tokens,
+            usage_source=record.source,
+            ttft_ms=event.ttft_ms,
         )
         await _settle(limiter, principal, reserved, _actual_tokens(payload, usage))
 
@@ -109,6 +133,8 @@ async def chat_completions(payload: ChatCompletionRequest, request: Request) -> 
     outgoing = upstream_body(
         body, include_usage=payload.stream and not client_wants_usage, default_max_tokens=cap
     )
+    # Relay's own time so far (auth, validation, policy, rate limit): gateway overhead.
+    metrics.gateway_overhead.observe(time.perf_counter() - started)
     try:
         if payload.stream:
             # Phase 1: the router tries the model's backends in order (skipping open
@@ -141,7 +167,6 @@ async def chat_completions(payload: ChatCompletionRequest, request: Request) -> 
             response = openai_error(502, "Backend unavailable.", "backend_unavailable")
         # Recorded for the audit trail; no tokens were generated, so all are refunded.
         await finish(response.status_code, None, None)
-        response.headers["x-request-id"] = str(request_id)
         return response
 
     # Phase 2: 200 + headers go out with the first event. From here on the status code
@@ -149,16 +174,44 @@ async def chat_completions(payload: ChatCompletionRequest, request: Request) -> 
     # backend's breaker), never a retry or a fallback.
     served_by = backend.name
     usage = StreamUsage(forward_usage_chunk=client_wants_usage)
+    metrics.backend_in_flight.labels(served_by).inc()
+
+    def stream_failed() -> None:
+        outcome["stream_error"] = True
+        router.breakers[served_by].record_failure()
+
+    async def stream_finished() -> None:
+        metrics.backend_in_flight.labels(served_by).dec()
+        await finish(200, usage.result(), usage)
+
     return StreamingResponse(
-        _relay_events(
-            upstream,
-            usage,
-            lambda: finish(200, usage.result(), usage.first_content_at),
-            on_stream_error=router.breakers[backend.name].record_failure,
-        ),
+        _relay_events(upstream, usage, stream_finished, on_stream_error=stream_failed),
         media_type="text/event-stream",
-        headers={**SSE_HEADERS, **headers, "x-relay-backend": backend.name},
+        headers={**SSE_HEADERS, **headers, "x-relay-backend": served_by},
     )
+
+
+def _observe(
+    metrics: Metrics, event: UsageEvent, stream: StreamUsage | None, stream_error: bool
+) -> None:
+    u = event.usage
+    if stream_error:
+        outcome = "stream_error"
+    else:
+        outcome = "ok" if u.status_code < 400 else f"{u.status_code // 100}xx"
+    metrics.backend_requests.labels(u.backend, outcome).inc()
+    if event.ttft_ms is not None:
+        metrics.ttft.labels(u.model, u.backend).observe(event.ttft_ms / 1000)
+    if stream is not None:
+        itl = metrics.itl.labels(u.model, u.backend)
+        for gap in stream.token_gaps:
+            itl.observe(gap)
+    if u.prompt_tokens is not None:
+        metrics.prompt_tokens.labels(event.tenant_id, u.model).inc(u.prompt_tokens)
+    if u.completion_tokens is not None:
+        metrics.completion_tokens.labels(event.tenant_id, u.model).inc(u.completion_tokens)
+    if event.cost_gbp is not None:
+        metrics.cost_gbp.labels(event.tenant_id, u.model).inc(event.cost_gbp)
 
 
 def _ms(seconds: float) -> float:

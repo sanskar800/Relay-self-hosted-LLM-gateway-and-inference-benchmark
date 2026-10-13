@@ -22,6 +22,7 @@ from relay.backends.base import (
 from relay.config import RelayConfig
 from relay.routing.circuit_breaker import CircuitBreaker
 from relay.routing.retry import RetryPolicy, call_with_retry
+from relay.telemetry.metrics import Metrics
 
 log = logging.getLogger("relay.routing")
 
@@ -49,12 +50,14 @@ class Router:
         breakers: Mapping[str, CircuitBreaker],
         retry: RetryPolicy,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        metrics: Metrics | None = None,
     ) -> None:
         self._config = config
         self._backends = backends
         self.breakers = breakers
         self._retry = retry
         self._sleep = sleep
+        self._metrics = metrics
 
     async def chat(self, model: str, body: bytes) -> tuple[Backend, BackendResponse]:
         return await self._route(model, lambda backend: backend.chat(body))
@@ -92,7 +95,9 @@ class Router:
                 return result
 
             try:
-                return backend, await call_with_retry(attempt, self._retry, sleep=self._sleep)
+                return backend, await call_with_retry(
+                    attempt, self._retry, sleep=self._sleep, on_retry=self._on_retry(name)
+                )
             except CircuitOpen:
                 # Skipped without sending anything, or opened during our own retries:
                 # then report the real failure, not "circuit open".
@@ -103,8 +108,17 @@ class Router:
                 if not is_backend_failure(exc):
                     raise  # e.g. 400: every backend would reject it
                 last_error = exc
+                if self._metrics:
+                    self._metrics.fallbacks.labels(model, name).inc()
                 log.warning("backend %s failed (%s); trying the next backend for %s",
                             name, exc, model)  # fmt: skip
         if last_error is not None:
             raise last_error
         raise NoBackendAvailable(model, "every backend's circuit breaker is open")
+
+    def _on_retry(self, backend: str) -> Callable[[BackendError], None]:
+        def count(_: BackendError) -> None:
+            if self._metrics:
+                self._metrics.retries.labels(backend).inc()
+
+        return count

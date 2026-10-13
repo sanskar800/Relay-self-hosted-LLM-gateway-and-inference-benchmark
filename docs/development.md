@@ -242,6 +242,30 @@ uv run relay-admin revoke-key rk_8f3aZ                     # by prefix or key id
 - If every backend is skipped by an open breaker: **503** `service_unavailable`. A mid-stream failure counts against the breaker but never falls back (tokens were already sent).
 - Verified 2026-10-13 with GPU llama.cpp first and CPU second: stopping the GPU container → the next request fell back to CPU after ~6 s (3 attempts on Windows), the breaker opened, and following requests went straight to CPU; after restarting the GPU and the 10 s cool-down, one probe closed the breaker and traffic returned to the GPU. All requests returned 200.
 
+### Logs (JSON) and request ids
+- Every log line is one JSON object (`timestamp`, `level`, `logger`, `event`, …), including uvicorn's. Relay writes **one `"event": "request"` line per request** when the response is finished: `request_id`, `method`, `path`, `status`, `duration_ms`, and for chat `tenant`, `key` (prefix), `model`, `backend`, `stream`, `prompt_tokens`, `completion_tokens`, `usage_source`, `ttft_ms`. `/healthz`, `/readyz` and `/metrics` are not logged.
+- **`request_id`** is assigned in the outermost middleware (before authentication), returned as `x-request-id` on every response, added to every log line written during the request, and used as the usage ledger's `request_id`.
+- **Prompts and completions are never logged** (a unit test checks the prompt text is absent).
+- Filter on Windows, e.g.: `Get-Content relay.log | ConvertFrom-Json | Where-Object status -ge 500`.
+
+### Metrics (`GET /metrics`, Prometheus text format)
+| Metric | Type | Labels |
+|---|---|---|
+| `relay_http_requests_total`, `relay_http_request_duration_seconds` | counter, histogram | `route` (template), `method`, `status` |
+| `relay_ttft_seconds`, `relay_inter_token_latency_seconds` | histogram | `model`, `backend` |
+| `relay_gateway_overhead_seconds` | histogram | (Relay's time before calling a backend) |
+| `relay_prompt_tokens_total`, `relay_completion_tokens_total`, `relay_cost_gbp_total` | counter | `tenant`, `model` |
+| `relay_backend_requests_total` | counter | `backend`, `outcome` (`ok`, `4xx`, `5xx`, `stream_error`) |
+| `relay_retries_total`, `relay_fallbacks_total` | counter | `backend` / `model`, `from_backend` |
+| `relay_backend_in_flight` (open streams), `relay_in_flight_requests` | gauge | `backend` / – |
+| `relay_circuit_breaker_state` (0 closed, 1 half-open, 2 open) | gauge | `backend` |
+| `relay_rate_limited_total`, `relay_ratelimiter_degraded` | counter, gauge | `tenant`, `kind` / – |
+| `relay_ledger_queue_depth`, `relay_ledger_events_total` | gauge, counter | – / `outcome` |
+
+- **Labels have few fixed values; never ids or text** (a unit test checks no UUID appears in `/metrics`). Latency is in histograms so percentiles can be computed (and aggregated across instances).
+- `/metrics` needs no API key, like `/healthz`; in production, expose it only on an internal network.
+- `python -m relay.serve` passes `log_config=None` to uvicorn; otherwise uvicorn's own logging config replaces the JSON formatter.
+
 ### Request limits (`limits:` in `config/relay.yaml`)
 | Limit | Default | Response |
 |---|---|---|
