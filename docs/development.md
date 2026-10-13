@@ -147,7 +147,13 @@ Both ports are bound to **127.0.0.1**: llama.cpp has no authentication (its log 
 | `prometheus` | 9090 | `prom/prometheus:v3.15.0` | Scrapes Relay at `host.docker.internal:8000` and llama.cpp every 5 s; evaluates `monitoring/rules.yml`. Data in volume `relay_promdata` (7 days) |
 | `grafana` | **3001** | `grafana/grafana:13.2.4` | Dashboard **Relay** provisioned from `monitoring/grafana/` (home page; also `/d/relay-overview`). Anonymous read-only; admin/admin (local only). 3001 because 3000 is often taken |
 
-*(Jaeger is added with tracing.)*
+| `jaeger` | 16686 (UI), 4318 (OTLP/HTTP) | `jaegertracing/jaeger:2.22.0` | Receives Relay's traces when `RELAY_OTEL_ENDPOINT=http://127.0.0.1:4318` (in `.env.example`). In-memory: traces are lost on restart |
+
+### Traces (OpenTelemetry → Jaeger)
+- Off unless `RELAY_OTEL_ENDPOINT` is set (tests and CI need no collector). Spans are batched and exported in the background; an unreachable collector drops spans, never slows requests.
+- Per request: the server span `POST /v1/chat/completions` (FastAPI instrumentation) with `relay.tenant`, `gen_ai.request.model`, `relay.backend`, `gen_ai.usage.input_tokens` / `output_tokens`, `relay.ttft_ms`, `relay.request_id`, and a `first_token` event; children `relay.auth`, `relay.rate_limit`, `relay.route` → one `relay.backend_attempt` per try (`relay.backend`, `relay.attempt`, `relay.outcome`) → the httpx `POST` to the engine (with a `traceparent` header). Breaker skips are `circuit_open_skip` events.
+- No per-chunk spans (`exclude_spans=["send", "receive"]`), no bodies, probes not traced. Every JSON log line written during a request has its `trace_id`: copy it into Jaeger's search (http://localhost:16686) to open the trace.
+- Verified 2026-10-13: with the GPU engine stopped, one streamed request's trace showed three ~2 s `BackendUnavailable` attempts on the GPU, then a 0.5 s successful attempt on the CPU, explaining its 6.9 s TTFT.
 
 ### Monitoring
 - Open **http://localhost:3001** (Grafana) and **http://localhost:9090** (Prometheus: *Status → Targets*, *Alerts*).

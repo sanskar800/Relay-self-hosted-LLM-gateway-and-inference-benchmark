@@ -9,6 +9,9 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Mapping
 
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
+
 from relay.backends.base import (
     Backend,
     BackendError,
@@ -51,6 +54,7 @@ class Router:
         retry: RetryPolicy,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         metrics: Metrics | None = None,
+        tracer: trace.Tracer | None = None,
     ) -> None:
         self._config = config
         self._backends = backends
@@ -58,6 +62,7 @@ class Router:
         self._retry = retry
         self._sleep = sleep
         self._metrics = metrics
+        self._tracer = tracer or trace.NoOpTracer()
 
     async def chat(self, model: str, body: bytes) -> tuple[Backend, BackendResponse]:
         return await self._route(model, lambda backend: backend.chat(body))
@@ -81,16 +86,26 @@ class Router:
                 # Checked before every attempt, so a breaker that opens during this
                 # request's own retries also stops the remaining retries.
                 if not breaker.allow_request():
+                    trace.get_current_span().add_event(
+                        "circuit_open_skip", {"relay.backend": backend.name}
+                    )
                     raise CircuitOpen(backend.name, "circuit open")
-                try:
-                    result = await call(backend)
-                except BackendError as exc:
-                    if is_backend_failure(exc):
-                        breaker.record_failure()
-                        failures.append(exc)
-                    else:
-                        breaker.record_success()  # it answered properly (e.g. a 4xx)
-                    raise
+                attrs = {"relay.backend": backend.name, "relay.attempt": len(failures) + 1}
+                with self._tracer.start_as_current_span(
+                    "relay.backend_attempt", attributes=attrs, record_exception=False
+                ) as span:
+                    try:
+                        result = await call(backend)
+                    except BackendError as exc:
+                        span.set_attribute("relay.outcome", type(exc).__name__)
+                        if is_backend_failure(exc):
+                            span.set_status(Status(StatusCode.ERROR, str(exc)))
+                            breaker.record_failure()
+                            failures.append(exc)
+                        else:
+                            breaker.record_success()  # it answered properly (e.g. a 4xx)
+                        raise
+                    span.set_attribute("relay.outcome", "ok")
                 breaker.record_success()
                 return result
 

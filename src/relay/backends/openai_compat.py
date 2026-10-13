@@ -43,6 +43,11 @@ class OpenAICompatBackend:
             transport=transport,
         )
 
+    @property
+    def http_client(self) -> httpx.AsyncClient:
+        """The connection pool to this backend (e.g. for tracing instrumentation)."""
+        return self._client
+
     async def chat(self, body: bytes) -> BackendResponse:
         # Non-streaming: the engine sends nothing until the answer is complete, so the
         # only meaningful bound is the total timeout.

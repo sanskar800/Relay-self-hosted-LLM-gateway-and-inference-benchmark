@@ -10,6 +10,7 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from opentelemetry import trace
 
 from relay.api.errors import APIError
 from relay.auth.keys import KeyStore, KeyStoreUnavailable, Principal, display_prefix, hash_key
@@ -35,8 +36,11 @@ async def require_api_key(
 
     raw = credentials.credentials.strip()
     store: KeyStore = request.app.state.key_store
+    tracer: trace.Tracer = getattr(request.app.state, "tracer", trace.NoOpTracer())
     try:
-        principal = await store.lookup(hash_key(raw))
+        with tracer.start_as_current_span("relay.auth", record_exception=False) as span:
+            principal = await store.lookup(hash_key(raw))
+            span.set_attribute("relay.auth.outcome", "ok" if principal else "invalid_key")
     except KeyStoreUnavailable as exc:
         # Fail closed: never let a request through because we could not check the key.
         log.error("key store unavailable: %s", exc)

@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 import anyio
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import StreamingResponse
+from opentelemetry import trace
 
 from relay.accounting.usage import (
     StreamUsage,
@@ -81,7 +82,10 @@ async def chat_completions(payload: ChatCompletionRequest, request: Request) -> 
     cap = default_max_tokens(payload, principal)
     reserved = reservation(payload, cap or config.limits.max_tokens)
     limiter: RateLimiter = request.app.state.rate_limiter
-    decision = await limiter.acquire(principal, reserved)
+    tracer: trace.Tracer = request.app.state.tracer
+    with tracer.start_as_current_span("relay.rate_limit") as span:
+        decision = await limiter.acquire(principal, reserved)
+        span.set_attributes({"relay.reserved_tokens": reserved, "relay.allowed": decision.allowed})
     if not decision.allowed:
         if decision.too_large:
             kind = "too_large"
@@ -119,6 +123,7 @@ async def chat_completions(payload: ChatCompletionRequest, request: Request) -> 
         )
         sink(event)
         _observe(metrics, event, stream, outcome["stream_error"])
+        _annotate_server_span(event, principal.tenant_id, outcome["stream_error"])
         log_fields.update(
             backend=served_by,
             prompt_tokens=record.prompt_tokens,
@@ -135,15 +140,18 @@ async def chat_completions(payload: ChatCompletionRequest, request: Request) -> 
     )
     # Relay's own time so far (auth, validation, policy, rate limit): gateway overhead.
     metrics.gateway_overhead.observe(time.perf_counter() - started)
+    route_attrs = {"gen_ai.request.model": payload.model, "relay.stream": payload.stream}
     try:
         if payload.stream:
             # Phase 1: the router tries the model's backends in order (skipping open
             # breakers, retrying per ADR-003) until one produces its first event. Until
             # then nothing has reached the client; failures become an HTTP error.
-            backend, upstream = await router.stream(payload.model, outgoing)
+            with tracer.start_as_current_span("relay.route", attributes=route_attrs):
+                backend, upstream = await router.stream(payload.model, outgoing)
         else:
             # Nothing is sent to the client before the whole answer exists.
-            backend, result = await router.chat(payload.model, outgoing)
+            with tracer.start_as_current_span("relay.route", attributes=route_attrs):
+                backend, result = await router.chat(payload.model, outgoing)
             served_by = backend.name
             await finish(result.status_code, usage_from_completion(result.content), None)
             return Response(
@@ -214,6 +222,28 @@ def _observe(
         metrics.cost_gbp.labels(event.tenant_id, u.model).inc(event.cost_gbp)
 
 
+def _annotate_server_span(event: UsageEvent, tenant: str, stream_error: bool) -> None:
+    """Business attributes on the request's server span (GenAI semantic conventions)."""
+    u = event.usage
+    span = trace.get_current_span()
+    attrs: dict = {
+        "relay.tenant": tenant,
+        "gen_ai.request.model": u.model,
+        "relay.backend": u.backend,
+        "relay.usage_source": u.source,
+        "relay.request_id": str(event.request_id),
+    }
+    if u.prompt_tokens is not None:
+        attrs["gen_ai.usage.input_tokens"] = u.prompt_tokens
+    if u.completion_tokens is not None:
+        attrs["gen_ai.usage.output_tokens"] = u.completion_tokens
+    if event.ttft_ms is not None:
+        attrs["relay.ttft_ms"] = event.ttft_ms
+    span.set_attributes(attrs)
+    if stream_error:
+        span.add_event("stream_error")
+
+
 def _ms(seconds: float) -> float:
     return round(seconds * 1000, 3)
 
@@ -254,7 +284,11 @@ async def _relay_events(
     try:
         async with aclosing(upstream.events()) as events:
             async for event in events:
-                if usage.observe(event):
+                first_before = usage.first_content_at
+                forward = usage.observe(event)
+                if first_before is None and usage.first_content_at is not None:
+                    trace.get_current_span().add_event("first_token")
+                if forward:
                     yield event
     except BackendStreamError as exc:
         on_stream_error()  # the backend broke mid-answer: counts against its breaker

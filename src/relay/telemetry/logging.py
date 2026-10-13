@@ -10,7 +10,17 @@ import sys
 
 import structlog
 
+from relay.telemetry.tracing import current_trace_id
+
 _configured = False
+
+
+def add_trace_id(_logger: object, _method: str, event: dict) -> dict:
+    """Link log lines to traces: the id of the trace active when the line was written."""
+    trace_id = current_trace_id()
+    if trace_id:
+        event["trace_id"] = trace_id
+    return event
 
 
 def configure_logging(level: int = logging.INFO) -> None:
@@ -20,6 +30,7 @@ def configure_logging(level: int = logging.INFO) -> None:
     _configured = True
     shared = [
         structlog.contextvars.merge_contextvars,  # e.g. request_id bound by the middleware
+        add_trace_id,
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.processors.TimeStamper(fmt="iso", utc=True),

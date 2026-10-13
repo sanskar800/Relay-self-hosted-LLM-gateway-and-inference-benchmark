@@ -8,6 +8,7 @@ import httpx
 import redis.asyncio as aioredis
 from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse, Response
+from opentelemetry import trace
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from relay.accounting.db import create_pool
@@ -18,7 +19,7 @@ from relay.api.errors import install_error_handlers
 from relay.api.limits import BodySizeLimitMiddleware
 from relay.auth.dependency import require_api_key
 from relay.auth.keys import CachedKeyStore, KeyStore, PostgresKeyStore
-from relay.backends import ENGINES, Backend
+from relay.backends import ENGINES, Backend, OpenAICompatBackend
 from relay.config import PricingConfig, RelayConfig, Settings, load_config, load_pricing
 from relay.lifecycle import Lifecycle, LifecycleMiddleware
 from relay.limits.failover import FailoverRateLimiter
@@ -28,6 +29,7 @@ from relay.routing.router import Router
 from relay.telemetry.logging import configure_logging
 from relay.telemetry.metrics import Metrics, StateCollector
 from relay.telemetry.middleware import TelemetryMiddleware
+from relay.telemetry.tracing import build_tracer_provider, instrument_app, instrument_backend_client
 
 
 def build_backends(
@@ -55,6 +57,7 @@ def create_app(
     usage_sink: Callable[[UsageEvent], None] | None = None,
     key_store: KeyStore | None = None,
     rate_limiter: RateLimiter | None = None,
+    tracer_provider: trace.TracerProvider | None = None,
 ) -> FastAPI:
     """Build the app.
 
@@ -68,6 +71,8 @@ def create_app(
     settings = settings or Settings()
     config = config or load_config(settings.config_path)
     pricing = pricing or load_pricing(settings.pricing_path)
+    provider = tracer_provider or build_tracer_provider(settings.otel_endpoint)
+    tracer = provider.get_tracer("relay")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -78,13 +83,24 @@ def create_app(
         if missing:
             raise RuntimeError(f"no backend object for configured backends: {sorted(missing)}")
         app.state.started_at = int(time.time())
+        app.state.tracer = tracer
+        for backend in app.state.backends.values():
+            if isinstance(backend, OpenAICompatBackend):
+                instrument_backend_client(backend.http_client, provider)
         # One circuit breaker per backend; the router walks each model's backend list.
         breakers = {name: CircuitBreaker(name, config.breaker.policy()) for name in config.backends}
         app.state.router = Router(
-            config, app.state.backends, breakers, config.retry.policy(), metrics=metrics
+            config,
+            app.state.backends,
+            breakers,
+            config.retry.policy(),
+            metrics=metrics,
+            tracer=tracer,
         )
 
         async with AsyncExitStack() as stack:
+            if hasattr(provider, "shutdown"):
+                stack.callback(provider.shutdown)  # flush buffered spans on exit (runs last)
             for backend in app.state.backends.values():
                 stack.push_async_callback(backend.aclose)
 
@@ -139,6 +155,9 @@ def create_app(
     app.add_middleware(BodySizeLimitMiddleware, max_bytes=config.limits.max_body_bytes)
     app.add_middleware(LifecycleMiddleware, lifecycle=lifecycle)
     app.add_middleware(TelemetryMiddleware, metrics=metrics)
+    # Instrumented last so its server span is outermost: our access log line then
+    # carries the trace id.
+    instrument_app(app, provider)
     # Every API route requires an API key; /healthz stays open for load balancers.
     authenticated = [Depends(require_api_key)]
     app.include_router(chat.router, dependencies=authenticated)

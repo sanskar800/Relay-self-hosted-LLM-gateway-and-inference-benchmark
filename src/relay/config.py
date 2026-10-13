@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     port: int = 8000
     shutdown_grace_s: float = Field(default=5.0, ge=0)  # not ready, still accepting
     drain_timeout_s: float = Field(default=30.0, gt=0)  # then wait this long for in-flight
+    # OTLP/HTTP collector for traces (e.g. Jaeger at http://127.0.0.1:4318). Unset = off.
+    otel_endpoint: str | None = Field(default=None, validation_alias="RELAY_OTEL_ENDPOINT")
     # Defaults match the local Docker Compose stack (see .env.example).
     database_url: str = "postgresql://relay:relay@127.0.0.1:5433/relay"
     redis_url: str = "redis://127.0.0.1:6379/0"

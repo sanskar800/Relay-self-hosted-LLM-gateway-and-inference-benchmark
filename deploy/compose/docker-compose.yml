@@ -161,6 +161,14 @@ services:
       retries: 30
     restart: unless-stopped
 
+  # Traces: receives OTLP from Relay (RELAY_OTEL_ENDPOINT), UI on :16686. In-memory.
+  jaeger:
+    image: jaegertracing/jaeger:2.22.0
+    ports:
+      - "127.0.0.1:16686:16686" # UI
+      - "127.0.0.1:4318:4318" # OTLP over HTTP
+    restart: unless-stopped
+
 volumes:
   pgdata:
   promdata:

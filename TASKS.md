@@ -222,7 +222,7 @@ Goal: **Relay survives backend failure and you can see what it is doing.**
     - Expected result: dashboard JSON committed: traffic, errors, TTFT/ITL p50/p95/p99, tokens/s, per-tenant usage, breaker state.
     - Files: `monitoring/prometheus.yml`, `monitoring/grafana/`
     - Verify: `make up`, generate traffic, panels move.
-- [ ] `[MUST]` **4.9 Basic OpenTelemetry tracing → Jaeger**
+- [x] `[MUST]` **4.9 Basic OpenTelemetry tracing → Jaeger** (done 2026-10-13)
     - Why: shows where time goes inside a single request.
     - Expected result: FastAPI + httpx auto-instrumentation plus manual spans for auth, limit and route; exported via OTLP to Jaeger in Compose.
     - Files: `src/relay/telemetry/tracing.py`, compose

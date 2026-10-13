@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 import httpx
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from opentelemetry.trace import NoOpTracerProvider
 
 from relay.auth.keys import Principal, hash_key
 from relay.backends.base import BackendError, BackendResponse
@@ -116,6 +117,8 @@ def make_app(**kwargs) -> FastAPI:
     kwargs.setdefault("rate_limiter", InMemoryRateLimiter())
     kwargs.setdefault("usage_sink", lambda event: None)
     kwargs.setdefault("pricing", PricingConfig(basis="tests"))
+    # No tracing unless a test asks for it (and never an exporter from the developer's .env).
+    kwargs.setdefault("tracer_provider", NoOpTracerProvider())
     return create_app(**kwargs)
 
 
