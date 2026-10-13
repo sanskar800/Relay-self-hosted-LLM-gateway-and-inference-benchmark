@@ -194,12 +194,12 @@ Goal: **Relay survives backend failure and you can see what it is doing.**
     - Expected result: retry with exponential backoff + jitter on connect errors / 503 only, before any byte is sent; mid-stream failure leads to an SSE error event and no retry.
     - Files: `src/relay/routing/retry.py`, `docs/adr/003-streaming-retry-policy.md`
     - Verify: tests "fails before first token, so retried" and "fails after 3 tokens, so clean error, no retry".
-- [ ] `[MUST]` **4.3 Circuit breaker**
+- [x] `[MUST]` **4.3 Circuit breaker** (done 2026-10-13)
     - Why: stop sending traffic to a backend that is clearly down; probe it to recover.
     - Expected result: closed → open → half-open state machine per backend, with configurable thresholds.
     - Files: `src/relay/routing/circuit_breaker.py`
     - Verify: unit tests drive every state transition with a fake clock.
-- [ ] `[MUST]` **4.4 Routing and fallback**
+- [x] `[MUST]` **4.4 Routing and fallback** (done 2026-10-13)
     - Why: availability. If the primary is down, use the next backend for that model.
     - Expected result: the router picks the first backend whose breaker is not open; falls back on pre-first-token failure. Local demo: llama.cpp GPU primary, llama.cpp CPU secondary.
     - Files: `src/relay/routing/router.py`

@@ -100,6 +100,10 @@ CONFIG = RelayConfig.model_validate(
     {
         "backends": {"b": {"engine": "llamacpp", "url": "http://b"}},
         "models": {"m": {"backends": ["b"]}},
+        # These tests are about rate limits: no waiting between retries, and a breaker
+        # that does not open after a deliberately failing backend.
+        "retry": {"base_delay_s": 0},
+        "breaker": {"failure_threshold": 100},
     }
 )
 BODY = {"model": "m", "messages": [{"role": "user", "content": "hi"}], "max_tokens": 10}

@@ -13,6 +13,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from relay.backends import ENGINES
 from relay.backends.base import Timeouts
+from relay.routing.circuit_breaker import BreakerPolicy
 from relay.routing.retry import RetryPolicy
 
 
@@ -92,11 +93,22 @@ class RetryConfig(_Strict):
         return RetryPolicy(self.max_attempts, self.base_delay_s, self.max_delay_s)
 
 
+class BreakerConfig(_Strict):
+    """Circuit breaker per backend."""
+
+    failure_threshold: int = Field(default=3, ge=1)  # consecutive failures to open
+    open_duration_s: float = Field(default=10.0, gt=0)  # cool-down before a probe
+
+    def policy(self) -> BreakerPolicy:
+        return BreakerPolicy(self.failure_threshold, self.open_duration_s)
+
+
 class RelayConfig(_Strict):
     backends: dict[str, BackendConfig] = Field(min_length=1)
     models: dict[str, ModelConfig] = Field(min_length=1)
     limits: LimitsConfig = LimitsConfig()
     retry: RetryConfig = RetryConfig()
+    breaker: BreakerConfig = BreakerConfig()
 
     @model_validator(mode="after")
     def _references_exist(self) -> Self:

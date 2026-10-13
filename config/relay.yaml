@@ -24,6 +24,12 @@ retry:
   base_delay_s: 0.1     # backoff ceiling doubles per retry, with full jitter
   max_delay_s: 1.0
 
+# Circuit breaker per backend: after `failure_threshold` consecutive failures the
+# backend is skipped for `open_duration_s`, then one probe request tests it.
+breaker:
+  failure_threshold: 3
+  open_duration_s: 10
+
 limits:
   max_body_bytes: 1048576   # 1 MB; larger bodies get 413 without being read into memory
   max_messages: 256
@@ -31,5 +37,7 @@ limits:
 
 models:
   qwen2.5-1.5b-instruct:
-    # CPU first while there is no fallback: the GPU service is not always running.
+    # Order = preference; the router falls back down the list. CPU first by default
+    # because the GPU service is opt-in (`make up-gpu`); with it running, put
+    # llamacpp-gpu first. (An absent first backend costs one probe per cool-down.)
     backends: [llamacpp-cpu, llamacpp-gpu]

@@ -21,6 +21,8 @@ from relay.backends import ENGINES, Backend
 from relay.config import PricingConfig, RelayConfig, Settings, load_config, load_pricing
 from relay.limits.failover import FailoverRateLimiter
 from relay.limits.token_bucket import InMemoryRateLimiter, RateLimiter, RedisRateLimiter
+from relay.routing.circuit_breaker import CircuitBreaker
+from relay.routing.router import Router
 
 
 def configure_logging() -> None:
@@ -84,6 +86,9 @@ def create_app(
         if missing:
             raise RuntimeError(f"no backend object for configured backends: {sorted(missing)}")
         app.state.started_at = int(time.time())
+        # One circuit breaker per backend; the router walks each model's backend list.
+        breakers = {name: CircuitBreaker(name, config.breaker.policy()) for name in config.backends}
+        app.state.router = Router(config, app.state.backends, breakers, config.retry.policy())
 
         async with AsyncExitStack() as stack:
             for backend in app.state.backends.values():

@@ -26,18 +26,17 @@ from relay.api.upstream import upstream_body
 from relay.auth.keys import Principal
 from relay.auth.policy import check_max_tokens, check_model, default_max_tokens
 from relay.backends.base import (
-    Backend,
+    BackendError,
     BackendHTTPError,
     BackendStream,
     BackendStreamError,
     BackendTimeout,
-    BackendUnavailable,
 )
 from relay.config import PricingConfig
 from relay.limits.estimate import estimate_prompt_tokens, reservation
 from relay.limits.responses import rate_limited_error, ratelimit_headers
 from relay.limits.token_bucket import RateLimiter, RateLimiterUnavailable
-from relay.routing.retry import call_with_retry
+from relay.routing.router import NoBackendAvailable, Router
 
 log = logging.getLogger("relay.limits")
 router = APIRouter()
@@ -78,19 +77,17 @@ async def chat_completions(payload: ChatCompletionRequest, request: Request) -> 
         raise rate_limited_error(decision, reserved)
     rl_headers = ratelimit_headers(decision)
 
-    # First backend in preference order (fallback down the list comes with routing).
-    backend: Backend = request.app.state.backends[config.models[payload.model].backends[0]]
+    router: Router = request.app.state.router
     sink: Callable[[UsageEvent], None] = request.app.state.usage_sink
-    retry_policy = config.retry.policy()
     pricing: PricingConfig = request.app.state.pricing
     request_id, occurred_at, started = uuid.uuid4(), datetime.now(UTC), time.perf_counter()
     headers = {**rl_headers, "x-request-id": str(request_id)}
+    # Which backend served (or last failed) the request; for the ledger and a header.
+    served_by = config.models[payload.model].backends[0]
 
     async def finish(status: int, usage: Usage | None, first_content_at: float | None) -> None:
         """Hand the usage event to the ledger and settle the rate-limit reservation."""
-        record = UsageRecord(
-            payload.model, backend.name, payload.stream, status, *(usage or MISSING)
-        )
+        record = UsageRecord(payload.model, served_by, payload.stream, status, *(usage or MISSING))
         sink(
             UsageEvent(
                 request_id=request_id,
@@ -114,21 +111,30 @@ async def chat_completions(payload: ChatCompletionRequest, request: Request) -> 
     )
     try:
         if payload.stream:
-            # Phase 1: stream() returns once the backend produced its first event. Until
-            # then nothing has reached the client, so failures may be retried (ADR-003)
-            # and otherwise become an ordinary HTTP error response.
-            upstream = await call_with_retry(lambda: backend.stream(outgoing), retry_policy)
+            # Phase 1: the router tries the model's backends in order (skipping open
+            # breakers, retrying per ADR-003) until one produces its first event. Until
+            # then nothing has reached the client; failures become an HTTP error.
+            backend, upstream = await router.stream(payload.model, outgoing)
         else:
             # Nothing is sent to the client before the whole answer exists.
-            result = await call_with_retry(lambda: backend.chat(outgoing), retry_policy)
+            backend, result = await router.chat(payload.model, outgoing)
+            served_by = backend.name
             await finish(result.status_code, usage_from_completion(result.content), None)
             return Response(
-                result.content, result.status_code, media_type=result.content_type, headers=headers
+                result.content,
+                result.status_code,
+                media_type=result.content_type,
+                headers={**headers, "x-relay-backend": backend.name},
             )
-    except (BackendHTTPError, BackendTimeout, BackendUnavailable) as exc:
+    except BackendError as exc:
+        served_by = exc.backend if exc.backend in config.backends else served_by
         if isinstance(exc, BackendHTTPError):
             # The backend refused the request (e.g. 400): pass its error through.
             response = backend_error_response(exc)
+        elif isinstance(exc, NoBackendAvailable):
+            response = openai_error(
+                503, "No backend is available for this model right now.", "service_unavailable"
+            )
         elif isinstance(exc, BackendTimeout):
             response = openai_error(504, "Backend timed out.", "backend_timeout")
         else:
@@ -139,12 +145,19 @@ async def chat_completions(payload: ChatCompletionRequest, request: Request) -> 
         return response
 
     # Phase 2: 200 + headers go out with the first event. From here on the status code
-    # cannot change, so failures become an SSE error event.
+    # cannot change, so failures become an SSE error event (and count against the
+    # backend's breaker), never a retry or a fallback.
+    served_by = backend.name
     usage = StreamUsage(forward_usage_chunk=client_wants_usage)
     return StreamingResponse(
-        _relay_events(upstream, usage, lambda: finish(200, usage.result(), usage.first_content_at)),
+        _relay_events(
+            upstream,
+            usage,
+            lambda: finish(200, usage.result(), usage.first_content_at),
+            on_stream_error=router.breakers[backend.name].record_failure,
+        ),
         media_type="text/event-stream",
-        headers={**SSE_HEADERS, **headers},
+        headers={**SSE_HEADERS, **headers, "x-relay-backend": backend.name},
     )
 
 
@@ -175,7 +188,10 @@ async def _settle(
 
 
 async def _relay_events(
-    upstream: BackendStream, usage: StreamUsage, on_finish: Callable[[], Awaitable[None]]
+    upstream: BackendStream,
+    usage: StreamUsage,
+    on_finish: Callable[[], Awaitable[None]],
+    on_stream_error: Callable[[], None] = lambda: None,
 ) -> AsyncIterator[bytes]:
     """Forward each event as soon as it is complete, noting token usage on the way.
 
@@ -188,6 +204,7 @@ async def _relay_events(
                 if usage.observe(event):
                     yield event
     except BackendStreamError as exc:
+        on_stream_error()  # the backend broke mid-answer: counts against its breaker
         if exc.timeout:
             yield _sse_error("Backend stopped sending tokens (timeout).", "backend_timeout")
         else:

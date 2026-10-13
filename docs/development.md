@@ -229,6 +229,12 @@ uv run relay-admin revoke-key rk_8f3aZ                     # by prefix or key id
 - **Daily report:** `uv run relay-admin usage [tenant] [--days 7]` reads the view **`usage_daily`** (tenant × UTC day × model: requests, failed, prompt/completion/total tokens, `cost_gbp`). The view also counts `requests_without_exact_usage` and `unpriced_requests`, so a sum never looks more complete than it is; the CLI shows "TBD" instead of £0 while rates are unknown, and marks partial sums with `*`.
 - **Adding the view to an existing database:** `make db-apply` runs `initdb/002_usage_daily.sql` (`CREATE OR REPLACE VIEW`, safe to repeat) without the data loss of `make db-reset`. Fresh databases get it automatically.
 
+### Routing, fallback and circuit breakers
+- Each model's `backends:` list is tried **in order**. A backend that is unreachable, times out or returns 5xx is recorded as a failure and the **next backend** is tried; a 4xx is returned at once (every backend would reject it). The response header **`x-relay-backend`** names the backend that answered; the ledger records it too.
+- **Circuit breaker per backend** (`breaker:` in `config/relay.yaml`): after 3 consecutive failures the backend is **open** and skipped without being tried for 10 s; then one **probe** request is let through (half-open); success closes it, failure re-opens it. 4xx responses do not count. Every attempt counts, including retries, and the breaker is checked before each attempt. Transitions are logged: `relay.routing circuit breaker <name>: closed -> open`.
+- If every backend is skipped by an open breaker: **503** `service_unavailable`. A mid-stream failure counts against the breaker but never falls back (tokens were already sent).
+- Verified 2026-10-13 with GPU llama.cpp first and CPU second: stopping the GPU container → the next request fell back to CPU after ~6 s (3 attempts on Windows), the breaker opened, and following requests went straight to CPU; after restarting the GPU and the 10 s cool-down, one probe closed the breaker and traffic returned to the GPU. All requests returned 200.
+
 ### Request limits (`limits:` in `config/relay.yaml`)
 | Limit | Default | Response |
 |---|---|---|
