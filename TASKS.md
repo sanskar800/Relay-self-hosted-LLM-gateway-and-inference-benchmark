@@ -245,11 +245,11 @@ Goal: **Relay survives backend failure and you can see what it is doing.**
 
 Goal: **a trustworthy measuring instrument, validated before it measures anything real.**
 
-- [ ] `[MUST]` **5.1 Scenario config schema (YAML + Pydantic)**
+- [x] `[MUST]` **5.1 Scenario config schema (YAML + Pydantic)** (done 2026-10-14)
     - Expected result: target URL, model, arrival rates (req/s), duration, warm-up, prompt/output length distribution, seed, SLO.
     - Files: `bench/scenarios/*.yaml`, `bench/loadgen/config.py`
     - Verify: invalid configs are rejected.
-- [ ] `[MUST]` **5.2 Prompt/length mix**
+- [x] `[MUST]` **5.2 Prompt/length mix** (done 2026-10-14)
     - Why: benchmarks with one fixed prompt length flatter the engine.
     - Expected result: seeded synthetic mix with a documented length distribution. `[SHOULD]`: lengths sampled from a public conversation dataset.
     - Files: `bench/loadgen/workload.py`

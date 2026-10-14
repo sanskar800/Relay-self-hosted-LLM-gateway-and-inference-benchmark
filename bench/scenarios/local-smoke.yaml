@@ -1,0 +1,28 @@
+# Smoke test of the harness against the local stack: low rates, short run.
+# Not a benchmark: it proves the pipeline works end to end (scenario -> load -> results).
+
+name: local-smoke
+description: "Low-rate smoke run through Relay against llama.cpp (CPU) on the dev machine."
+
+target:
+  base_url: http://127.0.0.1:8000/v1
+  model: qwen2.5-1.5b-instruct
+  api_key_env: RELAY_TEST_API_KEY
+
+load:
+  mode: open
+  arrival_rates_rps: [0.2, 0.5]
+  duration_s: 40
+  warmup_s: 5
+  request_timeout_s: 120
+
+workload:
+  seed: 42
+  prompt_tokens: { distribution: lognormal, median: 120, sigma: 0.5, min: 16, max: 600 }
+  output_tokens: { distribution: lognormal, median: 48, sigma: 0.4, min: 8, max: 128 }
+  ignore_eos: true
+  unique_prefix: true
+
+slo: # docs/brief.md
+  ttft_s: 1.0
+  tpot_s: 0.1
