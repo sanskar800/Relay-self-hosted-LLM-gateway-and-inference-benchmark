@@ -342,7 +342,36 @@ Stable across repeated runs (~11 s).
 
 ## 9. Benchmarking
 
-*(filled in during Days 5–6)*: local runs, the Colab notebook and where results go.
+```bash
+uv run python -m bench.loadgen bench/scenarios/local-smoke.yaml --scratch   # smoke run
+uv run python -m bench.loadgen bench/scenarios/<name>.yaml                  # real run
+```
+
+The harness is open-loop (Poisson arrivals at each rate in the scenario); the API key is
+read from the variable named by `target.api_key_env` (environment or `.env`).
+
+**Where results go:** `results/run-YYYY-MM-DD-<scenario>-HHMMSS/`, never overwritten:
+
+| File | Contents |
+|---|---|
+| `config.yaml` | the scenario exactly as run (re-runnable) |
+| `results.parquet` | one row per request: timestamps, TTFT/TPOT/E2E, every token time, status, tokens, backend, engine build |
+| `summary.json` | per-rate summary (percentiles, throughput, goodput) |
+| `env.json` | git SHA + dirty flag, host, GPU + driver (`nvidia-smi`), package versions, engine fingerprints |
+
+`--scratch` writes to `results/_scratch/` (git-ignored): smoke runs and anything run from a
+dirty tree are not results. Query any number of runs with DuckDB:
+
+```bash
+uv run python -c "import duckdb; print(duckdb.sql(\"select run_id, level, count(*) from 'results/*/results.parquet' group by all\"))"
+```
+
+On Windows set `PYTHONIOENCODING=utf-8` first: DuckDB prints box-drawing characters that the
+default console codepage cannot encode.
+
+**Cost:** `bench/analysis/cost.py` gives £/1M output tokens = £/h ÷ (tok/s × 3600) × 10⁶,
+using `bench/pricing.yaml` (each price with source URL and date; the RTX 4050 laptop has no
+public price, so its cost is TBD). These are estimates from assumed list prices, not bills.
 
 ### Colab feasibility check (2026-10-10, de-risking only, no measurements)
 | Item | Found |

@@ -271,11 +271,11 @@ Goal: **a trustworthy measuring instrument, validated before it measures anythin
 - [ ] `[MUST]` **5.6 Gateway overhead measurement**
     - Expected result: the same scenario run direct-to-backend and via Relay; plus a server-side overhead histogram.
     - Verify: both paths produce results; the difference is reported (value TBD until measured).
-- [ ] `[MUST]` **5.7 Results storage**
+- [x] `[MUST]` **5.7 Results storage** (folder name also carries `-HHMMSS`, so two runs on one day never collide; also `summary.json`)
     - Expected result: `results/run-YYYY-MM-DD-<name>/` containing `config.yaml`, `results.parquet` (one row per request), `env.json` (GPU, driver, engine version, git SHA).
     - Files: `bench/loadgen/results.py`
     - Verify: `duckdb -c "select count(*) from 'results/*/results.parquet'"`.
-- [ ] `[MUST]` **5.8 Cost model**
+- [x] `[MUST]` **5.8 Cost model**
     - Expected result: `£/1M output tokens` from measured tokens/s and `bench/pricing.yaml` (GPU class, £/h, source URL, date). Prices are labelled as assumptions.
     - Files: `bench/analysis/cost.py`, `bench/pricing.yaml`
     - Verify: unit test of the formula.

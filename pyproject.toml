@@ -27,6 +27,11 @@ relay-admin = "relay.cli:main"
 requires = ["uv_build>=0.9.9,<0.10"]
 build-backend = "uv_build"
 
+[tool.uv]
+# Local development gets the test tools and the benchmark harness; the Relay image
+# installs neither (Dockerfile: --no-default-groups).
+default-groups = ["dev", "bench"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
@@ -48,6 +53,10 @@ markers = [
 ]
 
 [dependency-groups]
+bench = [
+    "duckdb>=1.5.6",
+    "pyarrow>=26.0.0",
+]
 dev = [
     "huggingface-hub>=2.1.1",
     "openai>=3.26.1",

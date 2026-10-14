@@ -1,0 +1,27 @@
+# GPU prices for the cost model: £ per 1M output tokens =
+#   price per hour / (measured output tokens per second x 3600) x 1,000,000
+#
+# These are ASSUMPTIONS (public list prices), not bills: every cost derived from them is
+# labelled an estimate. Each entry records where the price came from and when.
+# null = no comparable public price: cost is reported as TBD, never guessed.
+
+currency: GBP
+fx:
+  usd_to_gbp: 0.747
+  source: "https://pluang.com/en/tools/currency-converter/usd-gbp (mid-market; page undated)"
+  retrieved: "2026-10-14"
+
+gpus:
+  t4:
+    description: "AWS g4dn.xlarge, eu-west-2 (London), on-demand: 1x NVIDIA T4 16 GB, 4 vCPU, 16 GiB (whole instance)"
+    usd_per_hour: 0.615
+    source: "https://www.doit.com/compute/spot/eu-west-2/g4dn.xlarge and https://www.devzero.io/instances/aws/g4dn.xlarge (third-party trackers of the AWS list price; verify against AWS before relying on it)"
+    retrieved: "2026-10-14"
+    # For comparison only, not used: Google Cloud lists the T4 GPU at $0.35/h WITHOUT
+    # the VM (https://cloud.google.com/products/compute/gpus-pricing, retrieved 2026-10-14).
+
+  rtx-4050-laptop:
+    description: "Local RTX 4050 Laptop GPU (6 GB): no comparable public on-demand price"
+    usd_per_hour: null
+    source: null
+    retrieved: null

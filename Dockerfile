@@ -14,9 +14,9 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 # Dependencies first (cached layer), then the project itself.
 COPY pyproject.toml uv.lock README.md ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-default-groups --no-install-project
 COPY src ./src
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-default-groups
 COPY config ./config
 
 RUN useradd --create-home --uid 10001 relay

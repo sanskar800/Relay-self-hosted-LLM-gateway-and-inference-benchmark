@@ -38,6 +38,7 @@ class RequestResult:
     in_warmup: bool = False
     backend: str | None = None  # x-relay-backend, when going through Relay
     request_id: str | None = None
+    engine_fingerprint: str | None = None  # system_fingerprint (engine build)
 
     @property
     def ok(self) -> bool:
@@ -97,6 +98,9 @@ async def send_one(
                 if not line.startswith("data: ") or line == "data: [DONE]":
                     continue
                 chunk = json.loads(line[6:])
+                result.engine_fingerprint = (
+                    chunk.get("system_fingerprint") or result.engine_fingerprint
+                )
                 if "error" in chunk:
                     result.error = json.dumps(chunk["error"])[:300]
                     continue

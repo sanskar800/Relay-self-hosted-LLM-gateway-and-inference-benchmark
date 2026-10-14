@@ -10,6 +10,7 @@ from dotenv import dotenv_values
 
 from bench.loadgen.config import Scenario, load_scenario
 from bench.loadgen.metrics import Summary, summarise
+from bench.loadgen.results import write_run
 from bench.loadgen.runner import RequestResult, arrival_schedule, run_open_loop
 from bench.loadgen.workload import generate
 
@@ -60,13 +61,24 @@ def print_summary(s: Summary) -> None:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m bench.loadgen")
     parser.add_argument("scenario", type=Path)
+    parser.add_argument("--out", type=Path, default=Path("results"), help="results root")
+    parser.add_argument(
+        "--scratch",
+        action="store_true",
+        help="smoke run: save under <out>/_scratch (git-ignored), not as a result",
+    )
     args = parser.parse_args(argv)
     scenario = load_scenario(args.scenario)
     if scenario.load.mode != "open":
         sys.exit("only open-loop scenarios are supported so far")
-    for _, summary in asyncio.run(run(scenario)):
+    levels = asyncio.run(run(scenario))
+    for _, summary in levels:
         print(f"== rate {summary.level} req/s")
         print_summary(summary)
+    root = args.out / "_scratch" if args.scratch else args.out
+    results = [r for level_results, _ in levels for r in level_results]
+    saved = write_run(root, scenario, results, [s for _, s in levels])
+    print(f"saved {len(results)} requests to {saved}")
 
 
 if __name__ == "__main__":
