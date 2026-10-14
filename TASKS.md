@@ -254,12 +254,12 @@ Goal: **a trustworthy measuring instrument, validated before it measures anythin
     - Expected result: seeded synthetic mix with a documented length distribution. `[SHOULD]`: lengths sampled from a public conversation dataset.
     - Files: `bench/loadgen/workload.py`
     - Verify: a histogram of generated lengths matches the documented distribution.
-- [ ] `[MUST]` **5.3 Open-loop async load generator (Poisson arrivals)**
+- [x] `[MUST]` **5.3 Open-loop async load generator (Poisson arrivals)** (done 2026-10-14)
     - Why: closed-loop testing hides overload because the client slows down with the server.
     - Expected result: arrivals scheduled independently of completions; per-request timestamps (send, first token, every token, end), token counts, status.
     - Files: `bench/loadgen/runner.py`
     - Verify: at a fixed rate λ, the observed mean inter-arrival time ≈ 1/λ.
-- [ ] `[MUST]` **5.4 Metric computation**
+- [x] `[MUST]` **5.4 Metric computation** (done 2026-10-14)
     - Expected result: TTFT, ITL, TPOT, E2E latency, request throughput, output tokens/s, goodput (share meeting the SLO), error rate; p50/p95/p99.
     - Files: `bench/loadgen/metrics.py`
     - Verify: unit tests on hand-built timelines with known answers.
