@@ -263,12 +263,12 @@ Goal: **a trustworthy measuring instrument, validated before it measures anythin
     - Expected result: TTFT, ITL, TPOT, E2E latency, request throughput, output tokens/s, goodput (share meeting the SLO), error rate; p50/p95/p99.
     - Files: `bench/loadgen/metrics.py`
     - Verify: unit tests on hand-built timelines with known answers.
-- [ ] `[MUST]` **5.5 Harness self-validation against a fake backend with known latency**
+- [x] `[MUST]` **5.5 Harness self-validation against a fake backend with known latency** (ground truth = the engine's recorded timeline, not its scripted delays: Windows sleeps overshoot)
     - Why: proves the instrument is accurate before trusting it on a real model.
     - Expected result: a fake server with injected TTFT/ITL; the harness recovers those values within tolerance.
     - Files: `tests/integration/test_harness_accuracy.py`
     - Verify: test passes.
-- [ ] `[MUST]` **5.6 Gateway overhead measurement**
+- [x] `[MUST]` **5.6 Gateway overhead measurement** (`python -m bench.overhead`: fixed-latency fake engine, per-request time outside the engine, cross-checked with `relay_gateway_overhead_seconds`; real figures come from the Day 6 run)
     - Expected result: the same scenario run direct-to-backend and via Relay; plus a server-side overhead histogram.
     - Verify: both paths produce results; the difference is reported (value TBD until measured).
 - [x] `[MUST]` **5.7 Results storage** (folder name also carries `-HHMMSS`, so two runs on one day never collide; also `summary.json`)

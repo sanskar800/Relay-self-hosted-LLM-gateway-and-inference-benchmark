@@ -11,6 +11,7 @@ Use `FakeEngine(...).transport()` as the httpx transport under a real backend.
 
 import asyncio
 import json
+import time
 from collections.abc import AsyncIterator
 
 import httpx
@@ -38,6 +39,10 @@ class FakeEngine:
         self.stall_after = stall_after
         self.stall_s = stall_s
         self.requests: list[dict] = []  # parsed JSON bodies, in order
+        # What the engine ACTUALLY did, per streamed request (time.perf_counter): when it
+        # started answering and when each token left. Ground truth for harness validation,
+        # since sleeps overshoot (by several ms on Windows).
+        self.timelines: list[dict] = []
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self._handle)
@@ -98,6 +103,8 @@ class FakeEngine:
         return b"data: " + json.dumps(chunk).encode() + b"\n\n"
 
     async def _events(self, body: dict, include_usage: bool) -> AsyncIterator[bytes]:
+        timeline = {"prompt": _last_message(body), "received": time.perf_counter(), "tokens": []}
+        self.timelines.append(timeline)
         await asyncio.sleep(self.first_event_delay_s)
         delta = {"role": "assistant", "content": None}
         yield self._chunk(body, [{"index": 0, "delta": delta, "finish_reason": None}])
@@ -105,6 +112,7 @@ class FakeEngine:
             if i == self.stall_after:
                 await asyncio.sleep(self.stall_s)
             await asyncio.sleep(self.token_delay_s)
+            timeline["tokens"].append(time.perf_counter())
             yield self._chunk(
                 body, [{"index": 0, "delta": {"content": token}, "finish_reason": None}]
             )
@@ -112,3 +120,8 @@ class FakeEngine:
         if include_usage:
             yield self._chunk(body, [], usage=self._usage())
         yield b"data: [DONE]\n\n"
+
+
+def _last_message(body: dict) -> str | None:
+    messages = body.get("messages") or []
+    return messages[-1].get("content") if messages else None

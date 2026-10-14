@@ -373,6 +373,25 @@ default console codepage cannot encode.
 using `bench/pricing.yaml` (each price with source URL and date; the RTX 4050 laptop has no
 public price, so its cost is TBD). These are estimates from assumed list prices, not bills.
 
+**Is the harness accurate?** `tests/integration/test_harness_accuracy.py` runs it against
+a fake engine that records when it really sent each token, and checks the harness's own
+added time per request (observed on the dev laptop: TTFT +2-6 ms at the median, token gaps
+within ~2 ms at p95). The engine's *scripted* delays are not used as the truth: on Windows,
+`asyncio.sleep` snaps to the ~15.6 ms system timer, so the engine is slower than its settings.
+
+**Gateway overhead:** `uv run python -m bench.overhead [--scratch]` (needs `make up` for Redis
+and Postgres; starts its own Relay on :8010). The same requests go direct to a fake engine
+and via Relay; per request it takes *time outside the engine* (harness-observed minus the
+engine's recorded timeline), so the engine's jitter cancels out, and compares the two paths.
+Relay's server-side `relay_gateway_overhead_seconds` is printed as a cross-check, and the
+breakdown is saved as `overhead.json` in the via-Relay run folder. Comparing direct vs via
+Relay against llama.cpp instead does not work: the model's own run-to-run variation is far
+larger than the overhead.
+
+**Before any timed run:** laptop awake, lid open, on mains power, nothing heavy running. A
+test batch on 2026-10-14 failed while Windows entered Modern Standby (lid closed): one run
+took 22 minutes and requests stalled. Smoke results like those are discarded, not reported.
+
 ### Colab feasibility check (2026-10-10, de-risking only, no measurements)
 | Item | Found |
 |---|---|
