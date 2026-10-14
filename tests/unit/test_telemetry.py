@@ -130,3 +130,15 @@ def test_rate_limited_requests_are_counted_per_tenant_and_kind() -> None:
         assert client.post("/v1/chat/completions", json=BODY).status_code == 429
         text = client.get("/metrics").text
     assert 'relay_rate_limited_total{kind="requests",tenant="team-test"} 1.0' in text
+
+
+def test_route_label_for_non_api_routes_and_unknown_paths() -> None:
+    app, _ = app_and_events()
+    with make_client(app) as client:
+        client.get("/docs")
+        client.get("/openapi.json")
+        client.get("/no/such/path")
+        text = client.get("/metrics").text
+    assert 'route="/docs",status="200"' in text
+    assert 'route="/openapi.json",status="200"' in text
+    assert 'route="unmatched",status="404"' in text

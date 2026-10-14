@@ -4,6 +4,7 @@ import time
 import uuid
 
 import structlog
+from starlette.routing import Match
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from relay.telemetry.logging import access_log
@@ -66,6 +67,14 @@ class TelemetryMiddleware:
 
 def _route(scope: Scope) -> str:
     """The route template (e.g. /v1/models/{model_id}), never the raw path: bounded labels."""
-    route = scope.get("route")
-    path = getattr(route, "path", None)
-    return path if path else "unmatched"
+    path = getattr(scope.get("route"), "path", None)
+    if path:
+        return path
+    # FastAPI sets scope["route"] for its API routes, but plain Starlette routes (such
+    # as /docs and /openapi.json) do not: find the route that fully matches.
+    app = scope.get("app")
+    for route in getattr(getattr(app, "router", None), "routes", []):
+        match, _ = route.matches(scope)
+        if match is Match.FULL:
+            return getattr(route, "path", "unmatched")
+    return "unmatched"
