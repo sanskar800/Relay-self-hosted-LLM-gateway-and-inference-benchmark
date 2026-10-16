@@ -374,7 +374,8 @@ new ones on the CPU backend: later levels would have looked much faster than the
 | `env.json` | git SHA + dirty flag, host, GPU + driver (`nvidia-smi`), package versions, engine fingerprints |
 
 `--scratch` writes to `results/_scratch/` (git-ignored): smoke runs and anything run from a
-dirty tree are not results. Query any number of runs with DuckDB:
+dirty tree are not results. Runs that are evidence for a finding move to `results/dev/`
+(committed, not benchmark results) and are written up in `docs/findings.md`. Query any number of runs with DuckDB:
 
 ```bash
 uv run python -c "import duckdb; print(duckdb.sql(\"select run_id, level, count(*) from 'results/*/results.parquet' group by all\"))"

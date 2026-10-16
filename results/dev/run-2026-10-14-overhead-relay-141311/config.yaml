@@ -1,0 +1,33 @@
+name: overhead-relay
+description: Same open-loop load direct to a fixed-latency fake engine and via Relay.
+target:
+  base_url: http://127.0.0.1:8010/v1
+  model: qwen2.5-1.5b-instruct
+  api_key_env: RELAY_TEST_API_KEY
+load:
+  mode: open
+  arrival_rates_rps:
+  - 5.0
+  concurrency: []
+  duration_s: 30.0
+  warmup_s: 5.0
+  request_timeout_s: 30.0
+workload:
+  seed: 42
+  prompt_tokens:
+    distribution: lognormal
+    median: 120
+    sigma: 0.5
+    min: 16
+    max: 600
+  output_tokens:
+    distribution: lognormal
+    median: 48
+    sigma: 0.4
+    min: 8
+    max: 128
+  ignore_eos: true
+  unique_prefix: true
+slo:
+  ttft_s: 1.0
+  tpot_s: 0.1
