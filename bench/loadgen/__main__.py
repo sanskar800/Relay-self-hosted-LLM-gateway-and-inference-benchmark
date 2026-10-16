@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import os
+import secrets
 import sys
 from pathlib import Path
 
@@ -11,8 +12,13 @@ from dotenv import dotenv_values
 from bench.loadgen.config import Scenario, load_scenario
 from bench.loadgen.metrics import Summary, summarise
 from bench.loadgen.results import write_run
-from bench.loadgen.runner import RequestResult, arrival_schedule, run_open_loop
-from bench.loadgen.workload import generate
+from bench.loadgen.runner import (
+    RequestResult,
+    arrival_schedule,
+    run_closed_loop,
+    run_open_loop,
+)
+from bench.loadgen.workload import generate, stream
 
 
 def api_key_for(scenario: Scenario) -> str | None:
@@ -25,12 +31,19 @@ def api_key_for(scenario: Scenario) -> str | None:
     return key
 
 
-async def run(scenario: Scenario) -> list[tuple[list[RequestResult], Summary]]:
+async def run(scenario: Scenario, nonce: str) -> list[tuple[list[RequestResult], Summary]]:
     key = api_key_for(scenario)
+    load = scenario.load
     out = []
-    for rate in scenario.load.arrival_rates_rps:
+    for n_workers in load.concurrency if load.mode == "closed" else []:
+        print(f"-> {n_workers} closed-loop workers for {load.duration_s:.0f} s...", flush=True)
+        # Same shape at every level, but new prompts: no cache hits on earlier levels.
+        specs = stream(scenario.workload, salt=f"{nonce}:c{n_workers}")
+        results = await run_closed_loop(scenario, n_workers, specs, api_key=key)
+        out.append((results, summarise(results, load.warmup_s, scenario.slo)))
+    for rate in load.arrival_rates_rps if load.mode == "open" else []:
         n = len(arrival_schedule(scenario, rate))
-        specs = generate(scenario.workload, max(n, 1))
+        specs = generate(scenario.workload, max(n, 1), salt=f"{nonce}:r{rate}")
         print(
             f"-> rate {rate} req/s for {scenario.load.duration_s:.0f} s ({n} requests)...",
             flush=True,
@@ -69,15 +82,16 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = parser.parse_args(argv)
     scenario = load_scenario(args.scenario)
-    if scenario.load.mode != "open":
-        sys.exit("only open-loop scenarios are supported so far")
-    levels = asyncio.run(run(scenario))
+    # Unique per run: a re-run must not hit prompts an engine cached from the last run.
+    nonce = secrets.token_hex(4)
+    levels = asyncio.run(run(scenario, nonce))
+    unit = "req/s" if scenario.load.mode == "open" else "workers (closed loop)"
     for _, summary in levels:
-        print(f"== rate {summary.level} req/s")
+        print(f"== {summary.level:g} {unit}")
         print_summary(summary)
     root = args.out / "_scratch" if args.scratch else args.out
     results = [r for level_results, _ in levels for r in level_results]
-    saved = write_run(root, scenario, results, [s for _, s in levels])
+    saved = write_run(root, scenario, results, [s for _, s in levels], prompt_salt=nonce)
     print(f"saved {len(results)} requests to {saved}")
 
 

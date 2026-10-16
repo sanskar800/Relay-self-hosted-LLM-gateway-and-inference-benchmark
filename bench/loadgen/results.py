@@ -120,7 +120,9 @@ def _gpu() -> list[dict] | None:
     return gpus or None
 
 
-def environment(scenario: Scenario, results: list[RequestResult]) -> dict:
+def environment(
+    scenario: Scenario, results: list[RequestResult], prompt_salt: str | None = None
+) -> dict:
     versions = {}
     for pkg in ("relay", "httpx", "pyarrow"):
         try:
@@ -141,6 +143,9 @@ def environment(scenario: Scenario, results: list[RequestResult]) -> dict:
         "gpu": _gpu(),
         "packages": versions,
         "target": {"base_url": str(scenario.target.base_url), "model": scenario.target.model},
+        # Prompt openings are salted per run (bench.loadgen.workload.stream); with this
+        # value the exact prompts can be regenerated.
+        "prompt_salt": prompt_salt,
         "engine_fingerprints": sorted(
             {r.engine_fingerprint for r in results if r.engine_fingerprint}
         ),
@@ -154,6 +159,7 @@ def write_run(
     results: list[RequestResult],
     summaries: list[Summary],
     now: datetime | None = None,
+    prompt_salt: str | None = None,
 ) -> Path:
     out = run_dir(root, scenario, now)
     out.mkdir(parents=True, exist_ok=False)
@@ -166,6 +172,6 @@ def write_run(
         json.dumps([dataclasses.asdict(s) for s in summaries], indent=2), encoding="utf-8"
     )
     (out / "env.json").write_text(
-        json.dumps(environment(scenario, results), indent=2), encoding="utf-8"
+        json.dumps(environment(scenario, results, prompt_salt), indent=2), encoding="utf-8"
     )
     return out

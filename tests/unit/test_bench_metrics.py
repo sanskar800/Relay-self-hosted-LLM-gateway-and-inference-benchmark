@@ -1,14 +1,20 @@
 """Metric definitions on hand-built timelines with known answers, and the open loop."""
 
 import asyncio
+import itertools
 import statistics
 import time
 
 import pytest
 from bench.loadgen.config import Scenario, Slo
 from bench.loadgen.metrics import itl, percentile, summarise, tpot, ttft
-from bench.loadgen.runner import RequestResult, poisson_schedule, run_open_loop
-from bench.loadgen.workload import generate
+from bench.loadgen.runner import (
+    RequestResult,
+    poisson_schedule,
+    run_closed_loop,
+    run_open_loop,
+)
+from bench.loadgen.workload import generate, stream
 
 from tests.fake_engine import FakeEngine
 
@@ -127,3 +133,40 @@ def test_errors_and_usage_are_recorded() -> None:
     assert all(len(r.token_times_s) == 3 for r in results)
     sent = engine.requests[0]
     assert sent["stream"] is True and sent["ignore_eos"] is True
+
+
+# --- closed loop ----------------------------------------------------------------------
+
+CLOSED = Scenario.model_validate(
+    {
+        **SCENARIO.model_dump(mode="json"),
+        "load": {"mode": "closed", "concurrency": [2], "duration_s": 1.0, "warmup_s": 0},
+    }
+)
+
+
+def max_in_flight(results: list[RequestResult]) -> int:
+    edges = sorted([(r.sent_s, 1) for r in results] + [(r.end_s, -1) for r in results])
+    level = peak = 0
+    for _, step in edges:  # at equal times an end (-1) sorts first: no false overlap
+        level += step
+        peak = max(peak, level)
+    return peak
+
+
+def test_closed_loop_waits_for_the_server() -> None:
+    # 2 workers, ~0.2 s per request, 1 s: about 2 x 1 / 0.2 = 10 requests. The same slow
+    # server under an open loop gets whatever rate was configured; here the clients slow
+    # down instead, which is how a closed loop hides overload.
+    engine = FakeEngine(tokens=["a", "b"], first_event_delay_s=0.2)
+    results = asyncio.run(
+        run_closed_loop(CLOSED, 2, stream(CLOSED.workload), transport=engine.transport())
+    )
+    assert all(r.ok for r in results)
+    assert max_in_flight(results) == 2
+    assert 8 <= len(results) <= 12
+    assert len({r.index for r in results}) == len(results)  # every request is a new one
+
+
+def test_stream_matches_generate() -> None:
+    assert list(itertools.islice(stream(SCENARIO.workload), 5)) == generate(SCENARIO.workload, 5)

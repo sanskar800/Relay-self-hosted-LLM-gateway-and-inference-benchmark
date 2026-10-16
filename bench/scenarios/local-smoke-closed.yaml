@@ -1,0 +1,30 @@
+# Closed-loop smoke test: N workers, each waiting for its previous answer. Contrast with
+# local-smoke.yaml (open loop) to show how a closed loop hides overload: when the server
+# slows down, the clients send less, so latency looks better than real users would see.
+# Not a benchmark: it proves the closed-loop path works end to end.
+
+name: local-smoke-closed
+description: "Closed-loop smoke run through Relay against llama.cpp on the dev machine."
+
+target:
+  base_url: http://127.0.0.1:8000/v1
+  model: qwen2.5-1.5b-instruct
+  api_key_env: RELAY_TEST_API_KEY
+
+load:
+  mode: closed
+  concurrency: [1, 2]
+  duration_s: 40
+  warmup_s: 5
+  request_timeout_s: 120
+
+workload:
+  seed: 42
+  prompt_tokens: { distribution: lognormal, median: 120, sigma: 0.5, min: 16, max: 600 }
+  output_tokens: { distribution: lognormal, median: 48, sigma: 0.4, min: 8, max: 128 }
+  ignore_eos: true
+  unique_prefix: true
+
+slo: # docs/brief.md
+  ttft_s: 1.0
+  tpot_s: 0.1

@@ -5,8 +5,10 @@ are built from words; ~1.3 tokens per English word is the planning factor, and t
 token count is taken from the engine's usage report for every request.
 """
 
+import itertools
 import math
 import random
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from bench.loadgen.config import LengthDistribution, Workload
@@ -77,33 +79,42 @@ def sample_length(dist: LengthDistribution, rng: random.Random) -> int:
     return int(min(dist.max, max(dist.min, round(value))))
 
 
-def build_prompt(target_tokens: int, rng: random.Random, unique_prefix: bool) -> str:
+def build_prompt(
+    target_tokens: int, rng: random.Random, unique_prefix: bool, openings: random.Random
+) -> str:
     n_words = max(1, round(target_tokens / TOKENS_PER_WORD))
     words = [rng.choice(WORDS) for _ in range(n_words)]
     if unique_prefix:
         # A random opening means no two prompts share a cacheable prefix beyond the
-        # chat template, as with real users.
-        opening = f"[note {rng.getrandbits(48):012x}]"
+        # chat template, as with real users. Drawn from its own RNG so the salt changes
+        # only the openings, never the lengths or words.
+        opening = f"[note {openings.getrandbits(48):012x}]"
         return f"{opening} {INSTRUCTION}\n{' '.join(words)}"
     return f"{INSTRUCTION}\n{' '.join(words)}"
 
 
-def generate(workload: Workload, n: int) -> list[RequestSpec]:
-    """The first `n` requests of this workload; the same seed gives the same requests."""
+def stream(workload: Workload, salt: str = "") -> Iterator[RequestSpec]:
+    """This workload's requests, endlessly. The seed fixes lengths and words; the salt
+    fixes the openings. Engines cache prompt prefixes ACROSS requests (llama.cpp keeps
+    earlier prompts and reuses the longest common prefix), so a prompt sent again by
+    another level or run would skip its prefill and flatter TTFT. Callers pass a salt
+    unique to each run and level: same workload shape, never the same prompt twice."""
     rng = random.Random(workload.seed)
-    specs = []
-    for i in range(n):
+    openings = random.Random(f"{workload.seed}:{salt}")
+    for i in itertools.count():
         prompt_tokens = sample_length(workload.prompt_tokens, rng)
         output_tokens = sample_length(workload.output_tokens, rng)
-        specs.append(
-            RequestSpec(
-                index=i,
-                prompt=build_prompt(prompt_tokens, rng, workload.unique_prefix),
-                target_prompt_tokens=prompt_tokens,
-                max_tokens=output_tokens,
-            )
+        yield RequestSpec(
+            index=i,
+            prompt=build_prompt(prompt_tokens, rng, workload.unique_prefix, openings),
+            target_prompt_tokens=prompt_tokens,
+            max_tokens=output_tokens,
         )
-    return specs
+
+
+def generate(workload: Workload, n: int, salt: str = "") -> list[RequestSpec]:
+    """The first `n` requests of this workload (open loop: the count is known up front)."""
+    return list(itertools.islice(stream(workload, salt), n))
 
 
 def request_body(spec: RequestSpec, model: str, workload: Workload) -> dict:

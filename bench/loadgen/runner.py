@@ -11,7 +11,7 @@ import asyncio
 import json
 import random
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 
 import httpx
@@ -153,4 +153,44 @@ async def run_open_loop(
                 asyncio.create_task(send_one(client, spec, result, scenario, headers, clock, start))
             )
         await asyncio.gather(*tasks)
+    return results
+
+
+async def run_closed_loop(
+    scenario: Scenario,
+    concurrency: int,
+    specs: Iterator[RequestSpec],
+    *,
+    api_key: str | None = None,
+    transport: httpx.AsyncBaseTransport | None = None,
+    clock: Callable[[], float] = time.perf_counter,
+) -> list[RequestResult]:
+    """N workers, each sending its next request only when the previous one finished.
+
+    The offered load is whatever the server allows: when it slows down, the clients slow
+    down with it, so queueing never shows up as latency. That is the effect the report
+    contrasts with the open loop; real users do not wait for each other.
+    """
+    load = scenario.load
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    results: list[RequestResult] = []
+
+    async def worker(client: httpx.AsyncClient, start: float) -> None:
+        # No await between the check and next(): workers take specs one at a time.
+        while (now := clock() - start) < load.duration_s:
+            spec = next(specs)
+            result = RequestResult(
+                level=concurrency,
+                index=spec.index,
+                scheduled_s=now,  # ready when the previous request ended: no lag by design
+                target_prompt_tokens=spec.target_prompt_tokens,
+                max_tokens=spec.max_tokens,
+                in_warmup=now < load.warmup_s,
+            )
+            results.append(result)
+            await send_one(client, spec, result, scenario, headers, clock, start)
+
+    async with make_client(scenario, transport) as client:
+        start = clock()
+        await asyncio.gather(*(worker(client, start) for _ in range(concurrency)))
     return results

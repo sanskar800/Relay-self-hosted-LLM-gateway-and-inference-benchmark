@@ -98,3 +98,15 @@ def test_request_body_fixes_output_length_and_asks_for_usage() -> None:
     assert body["max_tokens"] == spec.max_tokens and body["ignore_eos"] is True
     assert body["stream"] is True and body["stream_options"] == {"include_usage": True}
     assert body["temperature"] == 0.0
+
+
+def test_salt_changes_only_the_openings() -> None:
+    # Levels and runs must not resend a prompt an engine may have cached, yet must send
+    # the same workload shape so they stay comparable.
+    w = Workload.model_validate(VALID["workload"])
+    a, b = generate(w, 50, salt="run1:r0.5"), generate(w, 50, salt="run1:r1.0")
+    assert [s.target_prompt_tokens for s in a] == [s.target_prompt_tokens for s in b]
+    assert [s.max_tokens for s in a] == [s.max_tokens for s in b]
+    assert [s.prompt.split("]", 1)[1] for s in a] == [s.prompt.split("]", 1)[1] for s in b]
+    assert not {s.prompt.split("]")[0] for s in a} & {s.prompt.split("]")[0] for s in b}
+    assert generate(w, 50, salt="run1:r0.5") == a  # still reproducible

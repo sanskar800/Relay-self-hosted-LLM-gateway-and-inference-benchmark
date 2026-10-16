@@ -3,7 +3,7 @@
 
 COMPOSE = docker compose -f deploy/compose/docker-compose.yml
 
-.PHONY: help setup test lint format models models-all up up-gpu up-all down ps logs run serve test-contract test-integration test-alerts db-shell redis-cli db-reset db-apply
+.PHONY: help setup test lint format models models-all up up-gpu up-all down ps logs run serve test-contract test-integration test-alerts db-shell redis-cli db-reset db-apply bench bench-overhead
 
 help:  ## List targets
 	@uv run python -c "import re; [print(f\"{m[0]:<12} {m[1]}\") for m in re.findall(r\"^([a-z-]+):.*## (.*)$$\", open(\"Makefile\").read(), re.M)]"
@@ -19,6 +19,16 @@ test-contract:  ## OpenAI SDK contract tests (needs `make up` and `make run`)
 
 test-integration:  ## Tests against the Compose services (needs `make up`)
 	uv run pytest -m integration -v
+
+# Benchmarks: make bench SCENARIO=bench/scenarios/<name>.yaml [ARGS=--scratch]
+SCENARIO ?= bench/scenarios/local-smoke.yaml
+ARGS ?=
+
+bench:  ## Run a benchmark scenario (SCENARIO=..., ARGS=--scratch for a smoke run)
+	uv run python -m bench.loadgen $(SCENARIO) $(ARGS)
+
+bench-overhead:  ## Measure Relay's added latency against a fixed-latency fake engine (needs `make up`)
+	uv run python -m bench.overhead $(ARGS)
 
 test-alerts:  ## Validate Prometheus config and unit-test the alert rules (promtool in Docker)
 	docker run --rm --entrypoint promtool -v "$(CURDIR)/monitoring:/etc/prometheus:ro" -w //etc/prometheus prom/prometheus:v3.15.0 check config prometheus.yml

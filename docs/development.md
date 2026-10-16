@@ -343,12 +343,26 @@ Stable across repeated runs (~11 s).
 ## 9. Benchmarking
 
 ```bash
-uv run python -m bench.loadgen bench/scenarios/local-smoke.yaml --scratch   # smoke run
-uv run python -m bench.loadgen bench/scenarios/<name>.yaml                  # real run
+make bench ARGS=--scratch                                      # smoke run (local-smoke.yaml)
+make bench SCENARIO=bench/scenarios/<name>.yaml                # real run, saved under results/
+make bench-overhead ARGS=--scratch                             # Relay's added latency
 ```
 
-The harness is open-loop (Poisson arrivals at each rate in the scenario); the API key is
-read from the variable named by `target.api_key_env` (environment or `.env`).
+(`make bench` runs `uv run python -m bench.loadgen <scenario> [--scratch]`.) Needs `make up`
+and Relay running (`make run`). The API key is read from the variable named by
+`target.api_key_env` (environment or `.env`).
+
+**Load modes.** `mode: open` (the default for results): requests arrive as a Poisson
+process at each rate in `arrival_rates_rps`, whether or not earlier ones finished, as real
+users do. `mode: closed`: `concurrency` workers each send the next request only when the
+previous one finished. A closed loop slows down with the server, so it hides queueing:
+use it only to show that effect (`local-smoke-closed.yaml`), never for latency claims.
+
+**Prompt caching.** llama.cpp (and vLLM) reuse cached prompt prefixes across requests. The
+workload's seed fixes the lengths and words, but each run and level salts the prompt
+openings (`prompt_salt` in `env.json`), so no prompt is ever sent twice. Without the salt,
+the 2026-10-16 dry run showed repeated prompts at TTFT 53-102 ms against 585-1107 ms for
+new ones on the CPU backend: later levels would have looked much faster than they are.
 
 **Where results go:** `results/run-YYYY-MM-DD-<scenario>-HHMMSS/`, never overwritten:
 
