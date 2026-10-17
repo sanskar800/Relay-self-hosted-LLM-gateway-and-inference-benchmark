@@ -117,3 +117,58 @@ Too few requests (7-19 per level) for firm conclusions; Day 6 repeats this prope
 A batch of timing tests failed while Windows entered Modern Standby (lid closed): one run
 took 22 minutes and requests stalled. Rule: laptop awake, lid open, on mains power,
 nothing heavy running. Results from such runs are discarded.
+
+## F7. llama.cpp's server drops some reused connections; Relay's retries were hiding it
+*2026-10-16, Day 6 saturation probe (llama.cpp b11459 CUDA, RTX 4050, 1.5B Q4_K_M)*
+
+The first GPU probe, through a Relay benchmark config with retries off, failed 16-30% of
+requests, **even with one worker**: 502 `RemoteProtocolError('Server disconnected without
+sending a response.')`, then 503 once the circuit breaker opened
+(`results/dev/run-2026-10-16-local-gpu-1.5b-q4-probe-185646`: 212 ok, 67 x 502, 13 x 503).
+
+Isolating it, all with sequential streamed requests of the benchmark's lengths:
+
+| Path | Connections | Failed |
+|---|---|---|
+| Harness -> llama.cpp directly (no Relay) | pooled | 5 of 44 |
+| httpx -> llama.cpp | one reused | 4 of 40 |
+| httpx -> llama.cpp | new per request | 0 of 40 |
+| Inside the Docker network (no Windows port forwarding) | one reused | 7 of 40 |
+
+Not reproduced with tiny requests (12 back to back) or with idle gaps up to 8 s, so it is
+not a simple keep-alive timeout or request cap. Each failure surfaces about 0.21 s after
+the request is sent. The engine logged no errors and did not restart.
+
+**Conclusion:** llama.cpp's HTTP server sometimes closes a kept-alive connection after a
+streamed response, without telling the client; the next request on it fails. Not Relay,
+not Windows, not Docker. Reproduce: `bench/diagnostics/keepalive_reuse.py` (with and
+without `--fresh`).
+
+- **Hidden in production config:** ADR-003 retries before the first token caught these, at
+  about 0.2 s plus up to 0.1 s backoff of extra TTFT each, on roughly one request in seven.
+- **Not seen in F2:** that fake engine runs on uvicorn, which keeps connections correctly.
+- **Takeaway:** turn retries off when measuring: they hide failures and add load.
+
+**Side observation (not yet measured properly):** after a few idle seconds the first
+request took 290-400 ms instead of about 40 ms, probably the laptop GPU clocking down.
+The warm-up period and steady load cover this in benchmark runs.
+
+## F8. On a 16 GB laptop the full stack pages to disk, and timings collapse
+*2026-10-16, second Day 6 probe (after the F7 fix; `results/dev/run-2026-10-16-local-gpu-1.5b-q4-probe-192404`)*
+
+With F7 fixed, 1 and 4 closed-loop workers ran without errors (TTFT p95 101 and 127 ms).
+Then at 8 workers, about 15 s in, every stream stalled at once for about 15 s; throughput
+fell to 0.61 req/s, TTFT p95 reached 14.9 s and two requests hit Relay's 30 s idle timeout
+(504). Docker Desktop began answering its own API with HTTP 500 and then stopped responding.
+
+At that moment the laptop had **1.0 GB of 15.7 GB RAM free, 24.9 GB committed and 2,540
+pages/s** going to disk. Largest users: the WSL VM running Docker (5.2-6.2 GB: two
+llama.cpp engines, Postgres, Redis, Prometheus, Grafana, Jaeger), VS Code (1.6 GB) and
+Chrome (1.3 GB).
+
+**Conclusion:** the collapse measured the laptop's memory, not the GPU. The 2-worker level
+(no faster than 1 worker) is suspect for the same reason. Probes and runs from this state
+are discarded.
+
+**Takeaway:** a benchmark host must run only what the benchmark needs, and the harness
+should record memory pressure so a run like this is detected rather than reported.
