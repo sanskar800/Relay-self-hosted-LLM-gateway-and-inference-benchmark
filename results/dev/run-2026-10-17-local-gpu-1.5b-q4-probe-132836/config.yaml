@@ -1,0 +1,44 @@
+name: local-gpu-1.5b-q4-probe
+description: llama.cpp CUDA on the RTX 4050, Qwen2.5-1.5B-Instruct Q4_K_M, open loop
+  via Relay.
+setup:
+  hardware: RTX 4050 Laptop GPU 6 GB (i7-14650HX, 16 GB RAM)
+  engine: llama.cpp b11459 (server-cuda12)
+  model_file: qwen2.5-1.5b-instruct-q4_k_m.gguf
+  quantization: Q4_K_M
+  server_args: --parallel 4 --ctx-size 4096 --n-gpu-layers 99 --cache-ram 0
+  backend: llamacpp-gpu
+target:
+  base_url: http://127.0.0.1:8000/v1
+  model: qwen2.5-1.5b-instruct
+  api_key_env: RELAY_BENCH_API_KEY
+load:
+  mode: closed
+  arrival_rates_rps: []
+  concurrency:
+  - 1
+  - 2
+  - 4
+  - 8
+  duration_s: 30.0
+  warmup_s: 5.0
+  request_timeout_s: 180.0
+workload:
+  seed: 42
+  prompt_tokens:
+    distribution: lognormal
+    median: 200
+    sigma: 0.6
+    min: 16
+    max: 600
+  output_tokens:
+    distribution: lognormal
+    median: 96
+    sigma: 0.5
+    min: 16
+    max: 256
+  ignore_eos: true
+  unique_prefix: true
+slo:
+  ttft_s: 1.0
+  tpot_s: 0.1

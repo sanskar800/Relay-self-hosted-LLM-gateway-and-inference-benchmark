@@ -3,7 +3,7 @@
 
 COMPOSE = docker compose -f deploy/compose/docker-compose.yml
 
-.PHONY: help setup test lint format models models-all up up-gpu up-all down ps logs run serve test-contract test-integration test-alerts db-shell redis-cli db-reset db-apply bench bench-overhead
+.PHONY: help setup test lint format models models-all up up-gpu up-all down ps logs run serve test-contract test-integration test-alerts db-shell redis-cli db-reset db-apply bench bench-overhead bench-stack-gpu bench-stack-cpu
 
 help:  ## List targets
 	@uv run python -c "import re; [print(f\"{m[0]:<12} {m[1]}\") for m in re.findall(r\"^([a-z-]+):.*## (.*)$$\", open(\"Makefile\").read(), re.M)]"
@@ -29,6 +29,20 @@ bench:  ## Run a benchmark scenario (SCENARIO=..., ARGS=--scratch for a smoke ru
 
 bench-overhead:  ## Measure Relay's added latency against a fixed-latency fake engine (needs `make up`)
 	uv run python -m bench.overhead $(ARGS)
+
+# Lean stack for timed runs (docs/findings.md F8): only the engine under test plus what
+# Relay needs; the other engine and the observability services are stopped. Engine
+# settings are fixed for every benchmark (ADR-001). Pick the GPU model with
+# LLAMACPP_GPU_MODEL / LLAMACPP_GPU_ALIAS.
+BENCH_SLOTS = LLAMACPP_PARALLEL=4 LLAMACPP_CTX=4096 LLAMACPP_GPU_PARALLEL=4 LLAMACPP_GPU_CTX=4096 LLAMACPP_CACHE_RAM=0
+
+bench-stack-gpu:  ## Lean stack for GPU runs: llama.cpp GPU + Postgres + Redis only
+	$(COMPOSE) stop llamacpp prometheus grafana jaeger
+	$(BENCH_SLOTS) $(COMPOSE) --profile gpu up -d --wait --force-recreate llamacpp-gpu postgres redis
+
+bench-stack-cpu:  ## Lean stack for the CPU baseline: llama.cpp CPU + Postgres + Redis only
+	$(COMPOSE) --profile gpu stop llamacpp-gpu prometheus grafana jaeger
+	$(BENCH_SLOTS) $(COMPOSE) up -d --wait --force-recreate llamacpp postgres redis
 
 test-alerts:  ## Validate Prometheus config and unit-test the alert rules (promtool in Docker)
 	docker run --rm --entrypoint promtool -v "$(CURDIR)/monitoring:/etc/prometheus:ro" -w //etc/prometheus prom/prometheus:v3.15.0 check config prometheus.yml

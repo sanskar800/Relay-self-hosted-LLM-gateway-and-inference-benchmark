@@ -153,6 +153,11 @@ def environment(
     }
 
 
+def _write(path: Path, text: str) -> None:
+    # LF on every OS: results are committed, and CRLF would differ between machines.
+    path.write_text(text, encoding="utf-8", newline="\n")
+
+
 def write_run(
     root: Path,
     scenario: Scenario,
@@ -160,18 +165,15 @@ def write_run(
     summaries: list[Summary],
     now: datetime | None = None,
     prompt_salt: str | None = None,
+    extra_env: dict | None = None,
 ) -> Path:
+    """`extra_env` adds measured facts about the run to env.json (e.g. host memory)."""
     out = run_dir(root, scenario, now)
     out.mkdir(parents=True, exist_ok=False)
-    (out / "config.yaml").write_text(
-        yaml.safe_dump(scenario.model_dump(mode="json"), sort_keys=False), encoding="utf-8"
-    )
+    _write(out / "config.yaml", yaml.safe_dump(scenario.model_dump(mode="json"), sort_keys=False))
     table = pa.Table.from_pylist(_rows(out.name, scenario, results), schema=SCHEMA)
     pq.write_table(table, out / "results.parquet")
-    (out / "summary.json").write_text(
-        json.dumps([dataclasses.asdict(s) for s in summaries], indent=2), encoding="utf-8"
-    )
-    (out / "env.json").write_text(
-        json.dumps(environment(scenario, results, prompt_salt), indent=2), encoding="utf-8"
-    )
+    _write(out / "summary.json", json.dumps([dataclasses.asdict(s) for s in summaries], indent=2))
+    env = {**environment(scenario, results, prompt_salt), **(extra_env or {})}
+    _write(out / "env.json", json.dumps(env, indent=2))
     return out

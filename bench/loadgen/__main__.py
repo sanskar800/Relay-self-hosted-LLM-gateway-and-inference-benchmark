@@ -10,6 +10,12 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 from bench.loadgen.config import Scenario, load_scenario
+from bench.loadgen.memory import (
+    MIN_AVAILABLE_DURING_RUN_GIB,
+    MIN_AVAILABLE_TO_START_GIB,
+    MemoryMonitor,
+    available_gib,
+)
 from bench.loadgen.metrics import Summary, summarise
 from bench.loadgen.results import write_run
 from bench.loadgen.runner import (
@@ -108,21 +114,44 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="estimate saturation with a short closed loop and suggest open-loop rates",
     )
+    parser.add_argument(
+        "--allow-low-memory",
+        action="store_true",
+        help=f"start even with under {MIN_AVAILABLE_TO_START_GIB} GiB RAM available",
+    )
     args = parser.parse_args(argv)
     scenario = load_scenario(args.scenario)
     if args.probe:
         scenario = probe_scenario(scenario)
+    if (free := available_gib()) < MIN_AVAILABLE_TO_START_GIB and not args.allow_low_memory:
+        sys.exit(
+            f"only {free:.1f} GiB RAM available (need {MIN_AVAILABLE_TO_START_GIB}): a host "
+            "that pages to disk measures itself, not the engine (docs/findings.md F8). "
+            "Stop what the benchmark does not need, or pass --allow-low-memory."
+        )
     # Unique per run: a re-run must not hit prompts an engine cached from the last run.
     nonce = secrets.token_hex(4)
-    levels = asyncio.run(run(scenario, nonce))
+    with MemoryMonitor() as memory:
+        levels = asyncio.run(run(scenario, nonce))
     unit = "req/s" if scenario.load.mode == "open" else "workers (closed loop)"
     for _, summary in levels:
         print(f"== {summary.level:g} {unit}")
         print_summary(summary)
     root = args.out / "_scratch" if args.scratch or args.probe else args.out
     results = [r for level_results, _ in levels for r in level_results]
-    saved = write_run(root, scenario, results, [s for _, s in levels], prompt_salt=nonce)
+    saved = write_run(
+        root,
+        scenario,
+        results,
+        [s for _, s in levels],
+        prompt_salt=nonce,
+        extra_env={"host_memory": memory.report()},
+    )
     print(f"saved {len(results)} requests to {saved}")
+    m = memory.report()
+    print(
+        f"host RAM available: min {m['available_gib_min']} GiB (start {m['available_gib_start']})"
+    )
     if args.probe:
         capacity, rates = suggested_rates([s for _, s in levels])
         fractions = ", ".join(f"x{f}" for f in PROBE_FRACTIONS)
@@ -133,6 +162,12 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(
             f"INVALID RUN: requests served by {sorted(wrong)}, expected {expected}; "
             "do not use these results"
+        )
+    if memory.low:
+        sys.exit(
+            f"INVALID RUN: host RAM fell to {memory.report()['available_gib_min']} GiB "
+            f"(threshold {MIN_AVAILABLE_DURING_RUN_GIB}); timings may reflect paging "
+            "(docs/findings.md F8). Do not use these results"
         )
 
 

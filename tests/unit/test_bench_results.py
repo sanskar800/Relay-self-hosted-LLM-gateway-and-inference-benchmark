@@ -106,3 +106,11 @@ def test_pricing_file_has_sources_and_converts_to_gbp() -> None:
             assert gpu.source and gpu.retrieved
     assert pricing.gbp_per_hour("t4") == pytest.approx(0.615 * 0.747)
     assert pricing.gbp_per_hour("rtx-4050-laptop") is None
+
+
+def test_text_files_use_lf_and_extra_env_is_recorded(tmp_path: Path) -> None:
+    scenario = load_scenario(SCENARIO)
+    out = write_run(tmp_path, scenario, results(), [], extra_env={"host_memory": {"x": 1}})
+    for name in ("config.yaml", "summary.json", "env.json"):
+        assert b"\r\n" not in (out / name).read_bytes()
+    assert json.loads((out / "env.json").read_text())["host_memory"] == {"x": 1}

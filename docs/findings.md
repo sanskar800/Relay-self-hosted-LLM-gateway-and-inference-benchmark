@@ -172,3 +172,30 @@ are discarded.
 
 **Takeaway:** a benchmark host must run only what the benchmark needs, and the harness
 should record memory pressure so a run like this is detected rather than reported.
+
+## F9. llama.cpp's host-RAM prompt cache (8 GiB by default) was the memory hog
+*2026-10-17, Day 6 probes on the lean stack (only llama.cpp GPU, Postgres, Redis)*
+
+With the stack trimmed after F8, a probe still drove the host from 2.89 to **0.64 GiB
+available** and the new memory guard flagged it invalid
+(`results/dev/run-2026-10-17-local-gpu-1.5b-q4-probe-132342`). Inside the Docker VM the
+llama.cpp container had grown from 1.23 to 2.66 GiB during the run. Build b11459 keeps a
+prompt cache in host RAM, `--cache-ram`, **default 8192 MiB**, and also saves idle slots
+into it.
+
+Benchmark prompts are salted (F1), so the cache can never hit: it only costs memory. With
+`--cache-ram 0` the same probe kept at least **2.39 GiB available** and the container used
+378 MiB (`...-probe-132836`). Results otherwise matched: 0 errors, peak 2.59 req/s.
+
+**Decision:** benchmark runs use `--cache-ram 0` (`make bench-stack-*`, recorded in each
+scenario's `server_args`); development keeps the engine default (`LLAMACPP_CACHE_RAM`).
+For multi-turn chat in production the cache is valuable, but it needs a RAM budget.
+
+**Also:** WSL2 is slow to return freed memory to Windows. Dropping the VM's page cache
+(`docker run --rm --privileged alpine sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"`)
+shrank the VM from about 4.6 to 2.0 GB within 30 s.
+
+**Open question (from the same probes):** 2 closed-loop workers give barely more
+throughput than 1 (0.85 vs 0.78 req/s) and double the inter-token gap (17 vs 8 ms),
+while 4 workers give 3.2x. Seen in three probes. One candidate: a new prompt's prefill
+sharing a batch with the other request's decoding. To check against the open-loop runs.

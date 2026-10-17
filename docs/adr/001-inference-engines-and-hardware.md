@@ -52,6 +52,12 @@ configuration and is not substituted silently.
 **Colab T4, vLLM 0.31.0 (`--dtype half`):** 1.5B FP16, 1.5B AWQ, 7B AWQ. A `max_num_seqs`
 sweep and prefix caching on/off are SHOULD items, done only if time allows.
 
+**Engine settings (all llama.cpp configurations):** `--parallel 4 --ctx-size 4096` (4 slots
+of 1024 tokens; the workload's largest request is about 900) and `--cache-ram 0` (the
+host-RAM prompt cache cannot hit salted prompts and filled the laptop's RAM: findings F9).
+Set by `make bench-stack-gpu` / `make bench-stack-cpu`, which also stop every service the
+run does not need (F8).
+
 **Method (all configurations):**
 - Open-loop Poisson load through Relay, as clients would use it (Relay adds about 4 ms
   before the first token: findings F2). Prompt openings salted per run and level (F1).

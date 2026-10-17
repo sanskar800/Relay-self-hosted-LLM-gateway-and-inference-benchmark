@@ -407,6 +407,27 @@ larger than the overhead.
 test batch on 2026-10-14 failed while Windows entered Modern Standby (lid closed): one run
 took 22 minutes and requests stalled. Smoke results like those are discarded, not reported.
 
+**Local benchmark procedure** (ADR-001; findings F7-F9 explain each step):
+
+```bash
+make bench-stack-gpu        # or bench-stack-cpu: engine under test + Postgres + Redis only
+docker run --rm --privileged alpine sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"
+                            # hand the Docker VM's page cache back to Windows (~30 s)
+RELAY_CONFIG=config/bench/local-gpu.yaml make run          # second terminal
+make bench SCENARIO=bench/scenarios/<config>.yaml ARGS=--probe   # once: choose rates
+make bench SCENARIO=bench/scenarios/<config>.yaml          # from a committed, clean tree
+```
+
+- **Benchmark tenant:** scenarios use `RELAY_BENCH_API_KEY` (tenant `bench`, created with
+  `relay-admin create-tenant bench --models qwen2.5-1.5b-instruct qwen2.5-7b-instruct --rpm
+  100000 --tpm 100000000`, then `relay-admin create-key bench`), so rate limits never
+  throttle a run and benchmark traffic is kept apart in the ledger.
+- **Memory guard:** the harness refuses to start with under 2 GiB RAM available, samples
+  it during the run (`host_memory` in `env.json`) and marks the run INVALID if it fell
+  under 1 GiB. Close what you can (a browser) before long runs.
+- **Invalid runs:** a run served by another backend, or flagged for memory, exits with
+  `INVALID RUN`; its folder is kept for diagnosis but never used for results.
+
 ### Colab feasibility check (2026-10-10, de-risking only, no measurements)
 | Item | Found |
 |---|---|

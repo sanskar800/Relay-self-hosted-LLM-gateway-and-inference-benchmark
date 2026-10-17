@@ -41,6 +41,10 @@ services:
       - "${LLAMACPP_CTX:-8192}"
       - --parallel
       - "${LLAMACPP_PARALLEL:-2}"
+      # Host-RAM prompt cache, engine default 8192 MiB: on a 16 GB laptop it can push the
+      # host into paging (docs/findings.md F9). Benchmarks disable it (LLAMACPP_CACHE_RAM=0).
+      - --cache-ram
+      - "${LLAMACPP_CACHE_RAM:-8192}"
       # Prometheus-format engine metrics on /metrics (queue depth, tokens/s).
       - --metrics
 
@@ -76,6 +80,8 @@ services:
       # Offload all layers to the GPU (99 > the model's layer count).
       - --n-gpu-layers
       - "99"
+      - --cache-ram
+      - "${LLAMACPP_CACHE_RAM:-8192}"
       - --metrics
 
   # Durable store: tenants, API keys (hashed) and the usage ledger.
