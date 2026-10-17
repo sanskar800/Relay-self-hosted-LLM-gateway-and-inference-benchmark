@@ -42,6 +42,7 @@ def build_backends(
             str(cfg.url),
             timeouts=cfg.timeouts(),
             transport=transport,
+            keep_alive=cfg.keep_alive,
         )
         for name, cfg in config.backends.items()
     }

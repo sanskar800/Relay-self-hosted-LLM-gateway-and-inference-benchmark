@@ -50,6 +50,9 @@ class BackendConfig(_Strict):
     first_token_timeout_s: float = Field(default=60.0, gt=0)
     idle_timeout_s: float = Field(default=30.0, gt=0)
     total_timeout_s: float = Field(default=300.0, gt=0)
+    # Reuse connections to this backend. Unset = the engine's default (llama.cpp: off,
+    # docs/findings.md F7; others: on).
+    keep_alive: bool | None = None
 
     @model_validator(mode="after")
     def _known_engine(self) -> Self:

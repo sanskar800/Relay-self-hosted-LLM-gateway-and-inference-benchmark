@@ -24,6 +24,8 @@ class OpenAICompatBackend:
 
     engine = "openai-compatible"
     health_path = "/health"
+    # Reuse connections between requests unless the engine is known to drop them.
+    keep_alive_default = True
 
     def __init__(
         self,
@@ -32,14 +34,22 @@ class OpenAICompatBackend:
         *,
         timeouts: Timeouts | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
+        keep_alive: bool | None = None,
     ) -> None:
         self.name = name
         self.timeouts = timeouts or Timeouts()
+        self.keep_alive = self.keep_alive_default if keep_alive is None else keep_alive
         # httpx's read timeout applies to each socket read: for streams that is the idle
         # timeout (maximum silence between chunks).
         self._client = httpx.AsyncClient(
             base_url=base_url,
             timeout=httpx.Timeout(self.timeouts.idle, connect=self.timeouts.connect),
+            # Without keep-alive every request opens a new connection (well under 1 ms on
+            # a local network) instead of reusing one the engine may have closed.
+            # Otherwise httpx's defaults (100 connections, 20 kept alive).
+            limits=httpx.Limits(
+                max_connections=100, max_keepalive_connections=20 if self.keep_alive else 0
+            ),
             transport=transport,
         )
 

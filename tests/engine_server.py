@@ -41,6 +41,7 @@ class EngineApp:
                 break
         request = json.loads(body)
         self.engine.requests.append(request)
+        self.engine.client_ports.append(scope["client"][1])
         if not request.get("stream"):
             await self._json(send, 200, self.engine._completion(request))
             return

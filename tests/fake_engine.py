@@ -43,6 +43,9 @@ class FakeEngine:
         # started answering and when each token left. Ground truth for harness validation,
         # since sleeps overshoot (by several ms on Windows).
         self.timelines: list[dict] = []
+        # Client port per request when served over a socket (tests.engine_server): the
+        # same port twice means the connection was reused.
+        self.client_ports: list[int] = []
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self._handle)
