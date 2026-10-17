@@ -61,3 +61,15 @@ def test_a_run_served_by_another_backend_is_flagged() -> None:
 def test_setup_must_name_the_backend() -> None:
     with pytest.raises(ValidationError):
         scenario(setup={k: v for k, v in SETUP.items() if k != "backend"})
+
+
+def test_invalid_reasons_cover_backend_and_memory() -> None:
+    from bench.loadgen.__main__ import invalid_reasons
+
+    s = scenario(setup=SETUP)
+    ok_memory = {"flagged_low": False, "available_gib_min": 3.0}
+    assert invalid_reasons(s, [result("llamacpp-gpu")], ok_memory) == []
+    low = {"flagged_low": True, "available_gib_min": 0.8}
+    reasons = invalid_reasons(s, [result("llamacpp-cpu")], low)
+    assert len(reasons) == 2
+    assert "llamacpp-cpu" in reasons[0] and "0.8 GiB" in reasons[1]

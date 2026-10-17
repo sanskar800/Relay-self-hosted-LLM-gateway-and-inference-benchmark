@@ -137,18 +137,23 @@ def main(argv: list[str] | None = None) -> None:
     for _, summary in levels:
         print(f"== {summary.level:g} {unit}")
         print_summary(summary)
-    root = args.out / "_scratch" if args.scratch or args.probe else args.out
     results = [r for level_results, _ in levels for r in level_results]
+    m = memory.report()
+    problems = invalid_reasons(scenario, results, m)
+    # Decided BEFORE saving: an invalid run never lands where results are read from.
+    if problems:
+        root = args.out / "_invalid"
+    else:
+        root = args.out / "_scratch" if args.scratch or args.probe else args.out
     saved = write_run(
         root,
         scenario,
         results,
         [s for _, s in levels],
         prompt_salt=nonce,
-        extra_env={"host_memory": memory.report()},
+        extra_env={"host_memory": m, "invalid_reasons": problems},
     )
     print(f"saved {len(results)} requests to {saved}")
-    m = memory.report()
     print(
         f"host RAM available: min {m['available_gib_min']} GiB (start {m['available_gib_start']})"
     )
@@ -157,18 +162,21 @@ def main(argv: list[str] | None = None) -> None:
         fractions = ", ".join(f"x{f}" for f in PROBE_FRACTIONS)
         print(f"\nprobe: peak throughput {capacity:.2f} req/s (closed loop)")
         print(f"suggested arrival_rates_rps: {rates}  ({fractions} of peak)")
+    if problems:
+        sys.exit("INVALID RUN (do not use these results): " + "; ".join(problems))
+
+
+def invalid_reasons(scenario: Scenario, results: list[RequestResult], memory: dict) -> list[str]:
+    reasons = []
     if wrong := unexpected_backends(scenario, results):
         expected = scenario.setup.backend if scenario.setup else None
-        sys.exit(
-            f"INVALID RUN: requests served by {sorted(wrong)}, expected {expected}; "
-            "do not use these results"
+        reasons.append(f"requests served by {sorted(wrong)}, expected {expected}")
+    if memory["flagged_low"]:
+        reasons.append(
+            f"host RAM fell to {memory['available_gib_min']} GiB (threshold "
+            f"{MIN_AVAILABLE_DURING_RUN_GIB}): timings may reflect paging (findings F8)"
         )
-    if memory.low:
-        sys.exit(
-            f"INVALID RUN: host RAM fell to {memory.report()['available_gib_min']} GiB "
-            f"(threshold {MIN_AVAILABLE_DURING_RUN_GIB}); timings may reflect paging "
-            "(docs/findings.md F8). Do not use these results"
-        )
+    return reasons
 
 
 if __name__ == "__main__":

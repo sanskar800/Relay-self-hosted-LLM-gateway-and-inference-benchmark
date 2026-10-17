@@ -26,6 +26,8 @@ models/
 
 # Benchmark scratch output (final runs under results/ ARE committed)
 results/_scratch/
+# Runs flagged invalid by the harness (wrong backend, host memory): kept for diagnosis only
+results/_invalid/
 *.tmp
 
 # Notebooks
