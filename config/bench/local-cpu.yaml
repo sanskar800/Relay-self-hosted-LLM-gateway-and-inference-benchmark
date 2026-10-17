@@ -1,0 +1,16 @@
+# Relay config for the CPU baseline benchmark (ADR-001). Use with:
+#   RELAY_CONFIG=config/bench/local-cpu.yaml make run
+# One backend, no fallback, no retries (see local-gpu.yaml).
+
+backends:
+  llamacpp-cpu:
+    engine: llamacpp
+    url: http://127.0.0.1:8081
+    first_token_timeout_s: 120
+
+retry:
+  max_attempts: 1
+
+models:
+  qwen2.5-1.5b-instruct:
+    backends: [llamacpp-cpu]

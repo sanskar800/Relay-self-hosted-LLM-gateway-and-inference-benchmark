@@ -71,6 +71,29 @@ def print_summary(s: Summary) -> None:
     )
 
 
+PROBE_LOAD = {"mode": "closed", "concurrency": [1, 2, 4, 8], "duration_s": 30, "warmup_s": 5}
+PROBE_FRACTIONS = (0.25, 0.5, 0.75, 1.0, 1.25)
+
+
+def probe_scenario(scenario: Scenario) -> Scenario:
+    """A closed loop at rising concurrency: a quick estimate of where the configuration
+    saturates, to choose the open-loop rates. Never a result (always saved to _scratch)."""
+    raw = scenario.model_dump(mode="json")
+    load = {**PROBE_LOAD, "request_timeout_s": scenario.load.request_timeout_s}
+    return Scenario.model_validate({**raw, "name": f"{scenario.name}-probe", "load": load})
+
+
+def suggested_rates(summaries: list[Summary]) -> tuple[float, list[float]]:
+    capacity = max(s.throughput_rps for s in summaries)
+    return capacity, [round(capacity * f, 2) for f in PROBE_FRACTIONS]
+
+
+def unexpected_backends(scenario: Scenario, results: list[RequestResult]) -> set[str]:
+    if scenario.setup is None:
+        return set()
+    return {r.backend for r in results if r.backend and r.backend != scenario.setup.backend}
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m bench.loadgen")
     parser.add_argument("scenario", type=Path)
@@ -80,8 +103,15 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="smoke run: save under <out>/_scratch (git-ignored), not as a result",
     )
+    parser.add_argument(
+        "--probe",
+        action="store_true",
+        help="estimate saturation with a short closed loop and suggest open-loop rates",
+    )
     args = parser.parse_args(argv)
     scenario = load_scenario(args.scenario)
+    if args.probe:
+        scenario = probe_scenario(scenario)
     # Unique per run: a re-run must not hit prompts an engine cached from the last run.
     nonce = secrets.token_hex(4)
     levels = asyncio.run(run(scenario, nonce))
@@ -89,10 +119,21 @@ def main(argv: list[str] | None = None) -> None:
     for _, summary in levels:
         print(f"== {summary.level:g} {unit}")
         print_summary(summary)
-    root = args.out / "_scratch" if args.scratch else args.out
+    root = args.out / "_scratch" if args.scratch or args.probe else args.out
     results = [r for level_results, _ in levels for r in level_results]
     saved = write_run(root, scenario, results, [s for _, s in levels], prompt_salt=nonce)
     print(f"saved {len(results)} requests to {saved}")
+    if args.probe:
+        capacity, rates = suggested_rates([s for _, s in levels])
+        fractions = ", ".join(f"x{f}" for f in PROBE_FRACTIONS)
+        print(f"\nprobe: peak throughput {capacity:.2f} req/s (closed loop)")
+        print(f"suggested arrival_rates_rps: {rates}  ({fractions} of peak)")
+    if wrong := unexpected_backends(scenario, results):
+        expected = scenario.setup.backend if scenario.setup else None
+        sys.exit(
+            f"INVALID RUN: requests served by {sorted(wrong)}, expected {expected}; "
+            "do not use these results"
+        )
 
 
 if __name__ == "__main__":

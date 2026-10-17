@@ -79,9 +79,22 @@ class Slo(_Strict):
     tpot_s: float = Field(default=0.1, gt=0)  # time per output token after the first
 
 
+class Setup(_Strict):
+    """What a benchmark scenario measures (ADR-001), saved with every run's config.yaml."""
+
+    hardware: str  # e.g. "RTX 4050 Laptop 6 GB"
+    engine: str  # engine and pinned version, e.g. "llama.cpp b11459 (CUDA 12)"
+    model_file: str  # exact weights, e.g. the GGUF filename or Hugging Face repo
+    quantization: str  # e.g. "Q4_K_M", "FP16", "AWQ 4-bit"
+    server_args: str = ""  # settings that change results, e.g. "--parallel 4 --ctx-size 4096"
+    # Relay backend that must serve every request; a run is flagged if any other did.
+    backend: str
+
+
 class Scenario(_Strict):
-    name: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    name: str = Field(pattern=r"^[a-z0-9][a-z0-9.-]*$")  # used in folder names
     description: str = ""
+    setup: Setup | None = None  # required for benchmark scenarios; smoke tests omit it
     target: Target
     load: Load
     workload: Workload

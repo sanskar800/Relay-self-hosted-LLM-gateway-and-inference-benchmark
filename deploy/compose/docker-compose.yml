@@ -34,11 +34,13 @@ services:
       - 0.0.0.0
       - --port
       - "8080"
-      # Total context shared by parallel slots: 2 slots x 4096 tokens each.
+      # Total context shared by parallel slots: 2 slots x 4096 tokens each by default.
+      # Slots cap how many requests run at once (the rest queue); benchmarks set these
+      # explicitly (ADR-001): LLAMACPP_PARALLEL=4 LLAMACPP_CTX=4096.
       - --ctx-size
-      - "8192"
+      - "${LLAMACPP_CTX:-8192}"
       - --parallel
-      - "2"
+      - "${LLAMACPP_PARALLEL:-2}"
       # Prometheus-format engine metrics on /metrics (queue depth, tokens/s).
       - --metrics
 
@@ -68,9 +70,9 @@ services:
       - --port
       - "8080"
       - --ctx-size
-      - "8192"
+      - "${LLAMACPP_GPU_CTX:-8192}"
       - --parallel
-      - "2"
+      - "${LLAMACPP_GPU_PARALLEL:-2}"
       # Offload all layers to the GPU (99 > the model's layer count).
       - --n-gpu-layers
       - "99"
