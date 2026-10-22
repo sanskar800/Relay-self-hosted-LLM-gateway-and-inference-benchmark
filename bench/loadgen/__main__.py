@@ -77,7 +77,14 @@ def print_summary(s: Summary) -> None:
     )
 
 
-PROBE_LOAD = {"mode": "closed", "concurrency": [1, 2, 4, 8], "duration_s": 30, "warmup_s": 5}
+# Up to 64 workers: llama.cpp (4 slots) saturates early, but vLLM batches far more requests
+# at once, and a probe stopped at 8 measured "8 users", not its capacity (findings F10).
+PROBE_LOAD = {
+    "mode": "closed",
+    "concurrency": [1, 2, 4, 8, 16, 32, 64],
+    "duration_s": 30,
+    "warmup_s": 5,
+}
 PROBE_FRACTIONS = (0.25, 0.5, 0.75, 1.0, 1.25)
 
 
@@ -171,7 +178,7 @@ def execute(
     results = [r for level_results, _ in levels for r in level_results]
     summaries = [s for _, s in levels]
     m = memory.report()
-    problems = invalid_reasons(scenario, results, m)
+    problems = invalid_reasons(scenario, results, m, summaries)
     # Decided BEFORE saving: an invalid run never lands where results are read from.
     saved = write_run(
         out / "_invalid" if problems else root,
@@ -195,8 +202,27 @@ def execute(
     return saved, summaries
 
 
-def invalid_reasons(scenario: Scenario, results: list[RequestResult], memory: dict) -> list[str]:
+MAX_SCHEDULING_LAG_P99_S = 0.1
+
+
+def invalid_reasons(
+    scenario: Scenario,
+    results: list[RequestResult],
+    memory: dict,
+    summaries: list[Summary] = (),
+) -> list[str]:
     reasons = []
+    if scenario.load.mode == "open":
+        # Requests sent late mean the CLIENT could not keep up (e.g. 2 vCPUs on Colab): the
+        # offered load was not what the run claims, so a limit found here is the client's.
+        late = [
+            s.level for s in summaries if (s.scheduling_lag_p99 or 0) > MAX_SCHEDULING_LAG_P99_S
+        ]
+        if late:
+            reasons.append(
+                f"requests sent late (scheduling lag p99 > {MAX_SCHEDULING_LAG_P99_S * 1000:.0f}"
+                f" ms) at {late} req/s: the client, not the engine, was the bottleneck"
+            )
     if wrong := unexpected_backends(scenario, results):
         expected = scenario.setup.backend if scenario.setup else None
         reasons.append(f"requests served by {sorted(wrong)}, expected {expected}")

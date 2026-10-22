@@ -1,5 +1,6 @@
 """Benchmark CLI checks: probe settings, suggested rates, wrong-backend detection."""
 
+import dataclasses
 from pathlib import Path
 
 import pytest
@@ -39,7 +40,7 @@ def test_probe_is_a_short_closed_loop_with_the_same_workload() -> None:
     base = scenario(setup=SETUP)
     probe = probe_scenario(base)
     assert probe.name == "local-smoke-probe"
-    assert probe.load.mode == "closed" and probe.load.concurrency == [1, 2, 4, 8]
+    assert probe.load.mode == "closed" and probe.load.concurrency == [1, 2, 4, 8, 16, 32, 64]
     assert probe.workload == base.workload and probe.setup == base.setup
 
 
@@ -73,3 +74,15 @@ def test_invalid_reasons_cover_backend_and_memory() -> None:
     reasons = invalid_reasons(s, [result("llamacpp-cpu")], low)
     assert len(reasons) == 2
     assert "llamacpp-cpu" in reasons[0] and "0.8 GiB" in reasons[1]
+
+
+def test_a_client_that_fell_behind_invalidates_an_open_loop_run() -> None:
+    from bench.loadgen.__main__ import invalid_reasons
+
+    s = scenario(setup=SETUP)
+    ok_memory = {"flagged_low": False, "available_gib_min": 3.0}
+    on_time = dataclasses.replace(summary(1.0), scheduling_lag_p99=0.004)
+    late = dataclasses.replace(summary(2.0), level=8.0, scheduling_lag_p99=0.35)
+    assert invalid_reasons(s, [result("llamacpp-gpu")], ok_memory, [on_time]) == []
+    (reason,) = invalid_reasons(s, [result("llamacpp-gpu")], ok_memory, [on_time, late])
+    assert "8.0" in reason and "client" in reason

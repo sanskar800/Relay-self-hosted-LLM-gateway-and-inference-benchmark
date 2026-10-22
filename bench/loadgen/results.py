@@ -99,7 +99,9 @@ def _git() -> dict:
             return None
         return out.stdout.strip() if out.returncode == 0 else None
 
-    status = git("status", "--porcelain")
+    # Tracked files only: untracked files (e.g. the results being written) do not change
+    # the code that ran. Counting them marked every Colab run dirty (findings F10).
+    status = git("status", "--porcelain", "--untracked-files=no")
     return {"sha": git("rev-parse", "HEAD"), "dirty": bool(status) if status is not None else None}
 
 

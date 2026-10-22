@@ -199,3 +199,42 @@ shrank the VM from about 4.6 to 2.0 GB within 30 s.
 throughput than 1 (0.85 vs 0.78 req/s) and double the inter-token gap (17 vs 8 ms),
 while 4 workers give 3.2x. Seen in three probes. One candidate: a new prompt's prefill
 sharing a batch with the other request's decoding. To check against the open-loop runs.
+
+## F10. First Colab vLLM runs: AWQ beats FP16 on the T4; the probe was too small for vLLM
+*2026-10-22, `bench/colab/relay_benchmark.ipynb` on a free Colab Tesla T4 (driver 580.82.07),
+vLLM 0.31.0, code `9b46e84`; runs `results/run-2026-10-22-colab-t4-*`, probes and vLLM/Relay
+logs in `results/dev/`. All three valid: 0 errors, only `vllm-t4` served, host RAM never
+under 7.98 GiB.*
+
+Per-rate numbers come from each run's `summary.json`. Light load (lowest rate) vs the highest
+rate tested:
+
+| Config | TPOT p50, light | Highest rate meeting the SLO | Output tok/s there | TTFT p95 there |
+|---|---|---|---|---|
+| 1.5B FP16 | 16.6 ms | **>= 3.42 req/s** (all 5 rates met it) | 354 | 204 ms |
+| 1.5B AWQ | 8.5 ms | **>= 6.05 req/s** (all 5 rates met it) | 639 | 259 ms |
+| 7B AWQ | 28.2 ms | **0.84 req/s** (missed from 1.43: ITL p95 137 ms) | 91 | 517 ms |
+
+- **AWQ 4-bit is faster than FP16** for the same 1.5B model: decoding reads every weight from
+  GPU memory for each token, and 4-bit weights are a quarter of the bytes. vLLM ran AWQ on the
+  **Marlin** kernel (`quantization=auto_awq`, `MarlinLinearKernel`) although `--quantization
+  awq` was requested: vLLM 0.31 upgrades it automatically on the T4.
+- **Method flaw: the probe stopped at 8 closed-loop workers.** Right for llama.cpp (4 slots),
+  wrong for vLLM, which batches far more at once (its log: KV cache room for 171-206 requests
+  of 2048 tokens for the 1.5B models). Both 1.5B configs met the SLO at every rate, up to
+  1.25x the "peak", so their figures are **lower bounds**, and their costs upper bounds.
+  7B AWQ did saturate inside the tested range, so its limit stands. **Fix:** the probe now
+  doubles up to 64 workers; the 1.5B configs are re-run with it.
+- **`dirty: true` on all three runs is a false positive:** the check counted untracked files,
+  and `colab_run.sh` creates its log folder before the harness starts. The code is commit
+  `9b46e84`, unchanged on GitHub; the notebook edits nothing and `uv sync --frozen` does not
+  modify tracked files. The recorded flag is left as it is; the check now ignores untracked
+  files.
+- **Logs, checked:** "Cannot use FA version 2" is vLLM noting the T4 (compute 7.5) cannot run
+  FlashAttention 2; it used the Triton attention backend. The FP16 log's `EngineDeadError`
+  is at 13:12:37, after "[shutdown] API server: shutdown triggered": the script stopping
+  vLLM after the run (0 errors in its 1309 requests), not a crash. Prefix cache hit rate
+  about 6%: only the chat template's shared system prompt, as for real users (F1).
+
+Estimated cost (T4 at GBP 0.459/h, assumed list price, `bench/pricing.yaml`): 7B AWQ about
+GBP 1.41 per 1M output tokens at its limit; the 1.5B figures await the re-run.

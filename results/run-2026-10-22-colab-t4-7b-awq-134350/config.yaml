@@ -1,0 +1,45 @@
+name: colab-t4-7b-awq
+description: vLLM 0.31.0 on the Colab T4, Qwen2.5-7B-Instruct AWQ 4-bit, open loop
+  via Relay.
+setup:
+  hardware: NVIDIA Tesla T4 16 GB (Google Colab, free tier)
+  engine: vLLM 0.31.0
+  model_file: Qwen/Qwen2.5-7B-Instruct-AWQ@b25037543e9394b818fdfca67ab2a00ecc7dd641
+  quantization: AWQ 4-bit
+  server_args: --dtype half --max-model-len 2048 --quantization awq
+  backend: vllm-t4
+target:
+  base_url: http://127.0.0.1:8000/v1
+  model: qwen2.5-7b-instruct
+  api_key_env: RELAY_BENCH_API_KEY
+load:
+  mode: open
+  arrival_rates_rps:
+  - 0.34
+  - 0.67
+  - 1.01
+  - 1.35
+  - 1.68
+  concurrency: []
+  duration_s: 120.0
+  warmup_s: 20.0
+  request_timeout_s: 180.0
+workload:
+  seed: 42
+  prompt_tokens:
+    distribution: lognormal
+    median: 200
+    sigma: 0.6
+    min: 16
+    max: 600
+  output_tokens:
+    distribution: lognormal
+    median: 96
+    sigma: 0.5
+    min: 16
+    max: 256
+  ignore_eos: true
+  unique_prefix: true
+slo:
+  ttft_s: 1.0
+  tpot_s: 0.1

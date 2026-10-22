@@ -114,3 +114,22 @@ def test_text_files_use_lf_and_extra_env_is_recorded(tmp_path: Path) -> None:
     for name in ("config.yaml", "summary.json", "env.json"):
         assert b"\r\n" not in (out / name).read_bytes()
     assert json.loads((out / "env.json").read_text())["host_memory"] == {"x": 1}
+
+
+def test_untracked_files_do_not_make_the_tree_dirty(tmp_path: Path, monkeypatch) -> None:
+    import subprocess
+
+    from bench.loadgen.results import _git
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+
+    git("init", "-q")
+    (tmp_path / "code.py").write_text("x = 1\n")
+    git("add", "code.py")
+    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "c")
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "results.parquet").write_text("new, untracked\n")
+    assert _git()["dirty"] is False  # writing results does not count
+    (tmp_path / "code.py").write_text("x = 2\n")
+    assert _git()["dirty"] is True  # changing tracked code does
