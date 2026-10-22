@@ -1,0 +1,39 @@
+# Benchmark (ADR-001): vLLM on the Colab T4, Qwen2.5-1.5B-Instruct FP16, through Relay (standalone).
+# Run by bench/colab/relay_benchmark.ipynb via scripts/colab_run.sh colab-t4-1.5b-fp16, which starts
+# vLLM with setup.server_args and calls the harness with --auto-rates (no file edits in Colab).
+#
+# The workload and SLO are identical in every benchmark scenario (tests check this).
+
+name: colab-t4-1.5b-fp16
+description: "vLLM 0.31.0 on the Colab T4, Qwen2.5-1.5B-Instruct FP16, open loop via Relay."
+
+setup:
+  hardware: "NVIDIA Tesla T4 16 GB (Google Colab, free tier)"
+  engine: "vLLM 0.31.0"
+  model_file: "Qwen/Qwen2.5-1.5B-Instruct@989aa7980e4cf806f80c7fef2b1adb7bc71aa306"
+  quantization: "FP16"
+  server_args: "--dtype half --max-model-len 2048"
+  backend: vllm-t4
+
+target:
+  base_url: http://127.0.0.1:8000/v1
+  model: qwen2.5-1.5b-instruct
+  api_key_env: RELAY_BENCH_API_KEY
+
+load:
+  mode: open
+  arrival_rates_rps: [1.0]  # replaced by --auto-rates (probe peak x 0.25-1.25)
+  duration_s: 120
+  warmup_s: 20
+  request_timeout_s: 180
+
+workload:
+  seed: 42
+  prompt_tokens: { distribution: lognormal, median: 200, sigma: 0.6, min: 16, max: 600 }
+  output_tokens: { distribution: lognormal, median: 96, sigma: 0.5, min: 16, max: 256 }
+  ignore_eos: true
+  unique_prefix: true
+
+slo: # docs/brief.md
+  ttft_s: 1.0
+  tpot_s: 0.1

@@ -39,7 +39,7 @@ cleanup() {
   [ -n "$RELAY_PID" ] && kill "$RELAY_PID" 2>/dev/null || true
   [ -n "$VLLM_PID" ] && kill "$VLLM_PID" 2>/dev/null || true
   for _ in $(seq 1 60); do
-    used=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)
+    used=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -1 || echo 0)
     [ "${used:-0}" -lt 1000 ] && break
     sleep 2
   done

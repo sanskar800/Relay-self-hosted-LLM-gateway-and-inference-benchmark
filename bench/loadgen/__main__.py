@@ -83,7 +83,8 @@ PROBE_FRACTIONS = (0.25, 0.5, 0.75, 1.0, 1.25)
 
 def probe_scenario(scenario: Scenario) -> Scenario:
     """A closed loop at rising concurrency: a quick estimate of where the configuration
-    saturates, to choose the open-loop rates. Never a result (always saved to _scratch)."""
+    saturates, to choose the open-loop rates. Never a result itself (saved to _scratch, or to dev
+    as evidence with --auto-rates)."""
     raw = scenario.model_dump(mode="json")
     load = {**PROBE_LOAD, "request_timeout_s": scenario.load.request_timeout_s}
     return Scenario.model_validate({**raw, "name": f"{scenario.name}-probe", "load": load})
@@ -115,20 +116,50 @@ def main(argv: list[str] | None = None) -> None:
         help="estimate saturation with a short closed loop and suggest open-loop rates",
     )
     parser.add_argument(
+        "--auto-rates",
+        action="store_true",
+        help="probe first, then run the open loop at the probe's suggested rates "
+        "(for unattended runs, e.g. Colab; the probe is kept under <out>/dev)",
+    )
+    parser.add_argument(
         "--allow-low-memory",
         action="store_true",
         help=f"start even with under {MIN_AVAILABLE_TO_START_GIB} GiB RAM available",
     )
     args = parser.parse_args(argv)
     scenario = load_scenario(args.scenario)
-    if args.probe:
-        scenario = probe_scenario(scenario)
     if (free := available_gib()) < MIN_AVAILABLE_TO_START_GIB and not args.allow_low_memory:
         sys.exit(
             f"only {free:.1f} GiB RAM available (need {MIN_AVAILABLE_TO_START_GIB}): a host "
             "that pages to disk measures itself, not the engine (docs/findings.md F8). "
             "Stop what the benchmark does not need, or pass --allow-low-memory."
         )
+    if args.probe:
+        execute(probe_scenario(scenario), args.out / "_scratch", args.out)
+        return
+    extra: dict = {}
+    if args.auto_rates:
+        # The probe is evidence for the rates, so it is kept (results/dev), not scratch.
+        probe_dir, probe_summaries = execute(probe_scenario(scenario), args.out / "dev", args.out)
+        capacity, rates = suggested_rates(probe_summaries)
+        raw = scenario.model_dump(mode="json")
+        raw["load"]["arrival_rates_rps"] = rates
+        scenario = Scenario.model_validate(raw)
+        extra["rates_from_probe"] = {
+            "probe_run": probe_dir.name,
+            "peak_throughput_rps": round(capacity, 3),
+            "fractions_of_peak": list(PROBE_FRACTIONS),
+        }
+        print(f"\n-> open loop at {rates} req/s ({', '.join(f'x{f}' for f in PROBE_FRACTIONS)})")
+    root = args.out / "_scratch" if args.scratch else args.out
+    execute(scenario, root, args.out, extra)
+
+
+def execute(
+    scenario: Scenario, root: Path, out: Path, extra: dict | None = None
+) -> tuple[Path, list[Summary]]:
+    """Run every level, check validity, save. An invalid run goes to <out>/_invalid and
+    stops the program, so nothing after it uses invalid data."""
     # Unique per run: a re-run must not hit prompts an engine cached from the last run.
     nonce = secrets.token_hex(4)
     with MemoryMonitor() as memory:
@@ -138,32 +169,30 @@ def main(argv: list[str] | None = None) -> None:
         print(f"== {summary.level:g} {unit}")
         print_summary(summary)
     results = [r for level_results, _ in levels for r in level_results]
+    summaries = [s for _, s in levels]
     m = memory.report()
     problems = invalid_reasons(scenario, results, m)
     # Decided BEFORE saving: an invalid run never lands where results are read from.
-    if problems:
-        root = args.out / "_invalid"
-    else:
-        root = args.out / "_scratch" if args.scratch or args.probe else args.out
     saved = write_run(
-        root,
+        out / "_invalid" if problems else root,
         scenario,
         results,
-        [s for _, s in levels],
+        summaries,
         prompt_salt=nonce,
-        extra_env={"host_memory": m, "invalid_reasons": problems},
+        extra_env={**(extra or {}), "host_memory": m, "invalid_reasons": problems},
     )
     print(f"saved {len(results)} requests to {saved}")
     print(
         f"host RAM available: min {m['available_gib_min']} GiB (start {m['available_gib_start']})"
     )
-    if args.probe:
-        capacity, rates = suggested_rates([s for _, s in levels])
+    if scenario.load.mode == "closed" and scenario.name.endswith("-probe"):
+        capacity, rates = suggested_rates(summaries)
         fractions = ", ".join(f"x{f}" for f in PROBE_FRACTIONS)
         print(f"\nprobe: peak throughput {capacity:.2f} req/s (closed loop)")
         print(f"suggested arrival_rates_rps: {rates}  ({fractions} of peak)")
     if problems:
         sys.exit("INVALID RUN (do not use these results): " + "; ".join(problems))
+    return saved, summaries
 
 
 def invalid_reasons(scenario: Scenario, results: list[RequestResult], memory: dict) -> list[str]:

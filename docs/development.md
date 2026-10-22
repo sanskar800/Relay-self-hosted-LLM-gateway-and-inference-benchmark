@@ -428,6 +428,26 @@ make bench SCENARIO=bench/scenarios/<config>.yaml          # from a committed, c
 - **Invalid runs:** a run served by another backend, or flagged for memory, exits with
   `INVALID RUN`; its folder is kept for diagnosis but never used for results.
 
+### Colab benchmark (vLLM on the T4)
+
+[Open `bench/colab/relay_benchmark.ipynb` in Colab](https://colab.research.google.com/github/sanskar800/Relay-self-hosted-LLM-gateway-and-inference-benchmark/blob/main/bench/colab/relay_benchmark.ipynb),
+keep the preselected T4 runtime, `Runtime > Run all` (about 60-75 min). No code is edited in
+Colab: each configuration cell runs `scripts/colab_run.sh <scenario>`, which reads everything
+from `bench/scenarios/colab-t4-*.yaml` and:
+
+1. starts `vllm serve` with the scenario's pinned model revision and `server_args` (port 8001);
+2. starts Relay **standalone** (`RELAY_STANDALONE=1`): no Postgres or Redis; one random API
+   key for the session (`RELAY_STANDALONE_API_KEY`), in-memory rate limits, no usage ledger;
+3. runs the harness with `--auto-rates`: a closed-loop probe (kept in `results/dev/` as
+   evidence), then the open loop at 0.25x-1.25x of the probe's peak (recorded in `env.json`
+   as `rates_from_probe`);
+4. stops both, waits for the GPU memory to be released, zips `results/` to `/content` and,
+   if Google Drive is mounted, copies it to `MyDrive/relay-results/`.
+
+The script was dry-run on 2026-10-22 in a clean `python:3.12-slim` container with a stub
+`vllm` serving the fake engine (control flow, arguments, zip); the vLLM path itself is only
+exercised on Colab. Bring the final zip back and unzip it into the repository root.
+
 ### Colab feasibility check (2026-10-10, de-risking only, no measurements)
 | Item | Found |
 |---|---|

@@ -1,0 +1,19 @@
+# Relay config for benchmark runs on Colab (ADR-001): vLLM on the T4, port 8001 (8000 is
+# Relay's). Relay runs standalone there (RELAY_STANDALONE=1: no Postgres or Redis).
+# Same rules as local-gpu.yaml: one backend per model, no fallback, no retries.
+
+backends:
+  vllm-t4:
+    engine: vllm
+    url: http://127.0.0.1:8001
+    first_token_timeout_s: 120   # queueing past saturation is measured, not cut short
+
+retry:
+  max_attempts: 1
+
+models:
+  # Only one is served at a time (scripts/colab_run.sh starts vLLM per configuration).
+  qwen2.5-1.5b-instruct:
+    backends: [vllm-t4]
+  qwen2.5-7b-instruct:
+    backends: [vllm-t4]
