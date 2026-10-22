@@ -18,7 +18,7 @@ from relay.api import chat, models
 from relay.api.errors import install_error_handlers
 from relay.api.limits import BodySizeLimitMiddleware
 from relay.auth.dependency import require_api_key
-from relay.auth.keys import CachedKeyStore, KeyStore, PostgresKeyStore
+from relay.auth.keys import CachedKeyStore, KeyStore, PostgresKeyStore, SingleKeyStore
 from relay.backends import ENGINES, Backend, OpenAICompatBackend
 from relay.config import PricingConfig, RelayConfig, Settings, load_config, load_pricing
 from relay.lifecycle import Lifecycle, LifecycleMiddleware
@@ -74,6 +74,17 @@ def create_app(
     pricing = pricing or load_pricing(settings.pricing_path)
     provider = tracer_provider or build_tracer_provider(settings.otel_endpoint)
     tracer = provider.get_tracer("relay")
+    if settings.standalone and settings.standalone_api_key:
+        # No Postgres or Redis: one key, in-memory limits, no ledger (Settings docs).
+        key_store = key_store or SingleKeyStore(
+            settings.standalone_api_key.get_secret_value(),
+            tenant_id="standalone",
+            allowed_models=frozenset(config.models),
+            requests_per_minute=settings.standalone_requests_per_minute,
+            tokens_per_minute=settings.standalone_tokens_per_minute,
+        )
+        rate_limiter = rate_limiter or InMemoryRateLimiter()
+        usage_sink = usage_sink or _discard_usage
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -190,6 +201,10 @@ def create_app(
 def _breaker_states(app: FastAPI) -> dict[str, str]:
     router = getattr(app.state, "router", None)
     return {n: b.state.value for n, b in router.breakers.items()} if router else {}
+
+
+def _discard_usage(event: UsageEvent) -> None:
+    """Standalone mode has no ledger; token counts still reach the Prometheus metrics."""
 
 
 def _ledger_stats(app: FastAPI) -> dict[str, int] | None:

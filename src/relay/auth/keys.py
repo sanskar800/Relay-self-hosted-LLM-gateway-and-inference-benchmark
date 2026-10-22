@@ -7,6 +7,7 @@ cost ~100 ms of CPU on every request.
 """
 
 import hashlib
+import hmac
 import secrets
 import time
 from collections import OrderedDict
@@ -61,6 +62,38 @@ class KeyStore(Protocol):
     async def lookup(self, key_hash: bytes) -> Principal | None:
         """The active principal for this key hash, or None if unknown/revoked/disabled."""
         ...
+
+
+class SingleKeyStore:
+    """Standalone mode (no Postgres): exactly one key, held as its hash like every key.
+
+    The one tenant may use every configured model; its limits are given by the caller.
+    Meant for a single-user deployment such as a benchmark VM, not for multi-tenancy.
+    """
+
+    def __init__(
+        self,
+        raw_key: str,
+        *,
+        tenant_id: str,
+        allowed_models: frozenset[str],
+        requests_per_minute: int,
+        tokens_per_minute: int,
+    ) -> None:
+        self._hash = hash_key(raw_key)
+        self._principal = Principal(
+            tenant_id=tenant_id,
+            key_id="standalone",
+            key_prefix=display_prefix(raw_key),
+            allowed_models=allowed_models,
+            requests_per_minute=requests_per_minute,
+            tokens_per_minute=tokens_per_minute,
+            max_tokens_cap=None,
+        )
+
+    async def lookup(self, key_hash: bytes) -> Principal | None:
+        # Constant-time comparison: the hash of a guessed key must not leak by timing.
+        return self._principal if hmac.compare_digest(key_hash, self._hash) else None
 
 
 LOOKUP_SQL = """

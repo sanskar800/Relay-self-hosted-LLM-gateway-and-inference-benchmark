@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Self
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from relay.backends import ENGINES
@@ -35,6 +35,20 @@ class Settings(BaseSettings):
     # Defaults match the local Docker Compose stack (see .env.example).
     database_url: str = "postgresql://relay:relay@127.0.0.1:5433/relay"
     redis_url: str = "redis://127.0.0.1:6379/0"
+    # Standalone mode: no Postgres or Redis (e.g. a Colab benchmark VM). One API key from
+    # RELAY_STANDALONE_API_KEY, allowed every configured model; rate limits in memory;
+    # no usage ledger (token counts still reach the Prometheus metrics).
+    standalone: bool = False
+    standalone_api_key: SecretStr | None = None
+    standalone_requests_per_minute: int = Field(default=100_000, gt=0)
+    standalone_tokens_per_minute: int = Field(default=100_000_000, gt=0)
+
+    @model_validator(mode="after")
+    def _standalone_needs_a_key(self) -> Self:
+        # Fail closed: standalone without a key would have no way to authenticate anyone.
+        if self.standalone and not self.standalone_api_key:
+            raise ValueError("RELAY_STANDALONE=1 needs RELAY_STANDALONE_API_KEY")
+        return self
 
 
 class _Strict(BaseModel):
