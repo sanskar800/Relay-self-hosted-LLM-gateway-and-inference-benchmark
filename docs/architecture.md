@@ -134,5 +134,6 @@ The portfolio roadmap is the source of truth. These changes were **accepted on 2
 | Hosted-API fallback | Second local backend as fallback; hosted fallback optional and off by default | No paid API calls. |
 | Measured £/1M tokens on rented GPU | Measured throughput × *documented public on-demand price* for the same GPU class | We cannot measure a bill we never paid; the price is a clearly labelled input. |
 | Exact-match cache in gateway | OPTIONAL | Low interview value relative to time. |
+| Benchmark on the local RTX 4050 as well as Colab (task 6.2, MUST) | **Accepted 2026-10-25:** benchmark on the Colab T4 only; llama.cpp stays Relay's development backend | The laptop proved an unreliable benchmark host: it shares 16 GB of RAM with the desktop, every timed run was disturbed (findings F8, F9) and its one full run was invalid; Colab gives a dedicated machine. Cost: no CPU-vs-GPU or llama.cpp benchmark numbers (ADR-001 amendment). |
 
 Comparisons are only made **within the same hardware**. A T4 number is never presented as if it were measured on an L4.

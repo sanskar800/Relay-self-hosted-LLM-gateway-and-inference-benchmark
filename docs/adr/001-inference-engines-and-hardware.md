@@ -1,6 +1,6 @@
 # ADR-001: Inference engines, hardware and the benchmark matrix
 
-- **Status:** Accepted
+- **Status:** Accepted; amended 2026-10-25 (local runs dropped, see the end)
 - **Date:** 2026-10-16
 
 ## Context
@@ -80,3 +80,24 @@ run does not need (F8).
   different GPU are labelled as such, not mixed in.
 - Throughput figures are for one small GPU each; they are not capacity planning for
   larger hardware.
+
+## Amendment (2026-10-25): Colab T4 only
+
+**Decision:** the local RTX 4050 matrix is not run; the benchmark is the three Colab
+configurations (results committed 2026-10-22/24, findings F10-F11).
+
+**Why:** the laptop proved an unreliable benchmark host. It shares 16 GB of RAM with the
+desktop (IDE, browser) and the Docker VM; every timed run there was disturbed: connection
+drops (F7), memory exhaustion that stalled every stream and hung Docker (F8), an 8 GiB engine
+prompt cache (F9), and its one full run was invalid because a browser grew during it. Each
+problem was fixed, but a run still needs an hour of an otherwise idle laptop. Colab gives a
+dedicated machine and a GPU with a public price, so it also carries the cost estimates.
+(Sustained load is not a hardware risk: the GPU throttles itself when hot.)
+
+**Consequences:**
+- No CPU-vs-GPU, Q4_K_M-vs-Q8_0 or llama.cpp benchmark numbers. Quantisation and model size are
+  still covered on vLLM (FP16 vs AWQ, 1.5B vs 7B).
+- llama.cpp remains Relay's development and CI backend; the engineering findings from the
+  local attempts (F7-F9: the keep-alive fix, the memory guard, `--cache-ram 0`) stand.
+- The local scenarios, `config/bench/local-*.yaml` and `make bench-stack-*` stay in the repo,
+  unrun, so the local matrix can be measured later on a dedicated machine.

@@ -301,7 +301,7 @@ Goal: **real measurements on hardware we actually have.** We only compare config
         - Colab GPU: vLLM, Qwen2.5-1.5B FP16 vs AWQ; 7B AWQ; `max_num_seqs` sweep; prefix caching on/off `[SHOULD]`.
     - Files: `docs/adr/001-inference-engines-and-hardware.md`, `bench/scenarios/`
     - Verify: each config has a scenario file.
-- [ ] `[MUST]` **6.2 Local GPU benchmark runs**
+- [~] `[MUST]` **6.2 Local GPU benchmark runs** (**dropped 2026-10-25**, accepted deviation: architecture.md §6, ADR-001 amendment; tooling kept, unrun)
     - Expected result: results folders for each local config across several arrival rates.
     - Verify: the Parquet row count matches requests sent; error rate recorded.
 - [x] `[MUST]` **6.3 Colab notebook** (built 2026-10-22; dry-run in Linux with a stub vLLM; first real Colab run 2026-10-22)
