@@ -304,12 +304,12 @@ Goal: **real measurements on hardware we actually have.** We only compare config
 - [ ] `[MUST]` **6.2 Local GPU benchmark runs**
     - Expected result: results folders for each local config across several arrival rates.
     - Verify: the Parquet row count matches requests sent; error rate recorded.
-- [x] `[MUST]` **6.3 Colab notebook** (built 2026-10-22; dry-run in Linux with a stub vLLM; awaiting its first real Colab run)
+- [x] `[MUST]` **6.3 Colab notebook** (built 2026-10-22; dry-run in Linux with a stub vLLM; first real Colab run 2026-10-22)
     - Known from the 2.10 check: start vLLM with `--dtype half --port 8001` (T4 has no bfloat16; 8000 is Relay's port); Colab runs Python 3.13, uv installs the project's 3.12.
     - Expected result: `bench/colab/relay_benchmark.ipynb` does: clone repo → `uv`/pip install → detect GPU → start vLLM (and Relay in minimal mode: in-memory limiter, ledger off) → run scenarios → zip `results/` → download or save to Drive. No code edits inside Colab.
     - Files: `bench/colab/`, `scripts/colab_run.sh`
     - Verify: runs top to bottom on a fresh runtime.
-- [ ] `[MUST]` **6.4 Colab vLLM runs**
+- [x] `[MUST]` **6.4 Colab vLLM runs** (done 2026-10-24: 1.5B FP16, 1.5B AWQ, 7B AWQ on a T4; findings F10-F11)
     - Expected result: results for at least 3 engine/quantisation configs (MVP requirement), with GPU model recorded in `env.json`.
     - Verify: results are committed under `results/`.
 - [ ] `[SHOULD]` **6.5 GSM8K per quantisation config**
