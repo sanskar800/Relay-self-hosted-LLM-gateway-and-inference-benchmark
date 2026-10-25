@@ -1,0 +1,45 @@
+name: colab-t4-1.5b-fp16
+description: vLLM 0.31.0 on the Colab T4, Qwen2.5-1.5B-Instruct FP16, open loop via
+  Relay.
+setup:
+  hardware: NVIDIA Tesla T4 16 GB (Google Colab, free tier)
+  engine: vLLM 0.31.0
+  model_file: Qwen/Qwen2.5-1.5B-Instruct@989aa7980e4cf806f80c7fef2b1adb7bc71aa306
+  quantization: FP16
+  server_args: --dtype half --max-model-len 2048
+  backend: vllm-t4
+target:
+  base_url: http://127.0.0.1:8000/v1
+  model: qwen2.5-1.5b-instruct
+  api_key_env: RELAY_BENCH_API_KEY
+load:
+  mode: open
+  arrival_rates_rps:
+  - 1.84
+  - 3.69
+  - 5.53
+  - 7.38
+  - 9.22
+  concurrency: []
+  duration_s: 120.0
+  warmup_s: 20.0
+  request_timeout_s: 180.0
+workload:
+  seed: 42
+  prompt_tokens:
+    distribution: lognormal
+    median: 200
+    sigma: 0.6
+    min: 16
+    max: 600
+  output_tokens:
+    distribution: lognormal
+    median: 96
+    sigma: 0.5
+    min: 16
+    max: 256
+  ignore_eos: true
+  unique_prefix: true
+slo:
+  ttft_s: 1.0
+  tpot_s: 0.1

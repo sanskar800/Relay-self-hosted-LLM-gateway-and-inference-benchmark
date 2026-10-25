@@ -202,8 +202,9 @@ sharing a batch with the other request's decoding. To check against the open-loo
 
 ## F10. First Colab vLLM runs: AWQ beats FP16 on the T4; the probe was too small for vLLM
 *2026-10-22, `bench/colab/relay_benchmark.ipynb` on a free Colab Tesla T4 (driver 580.82.07),
-vLLM 0.31.0, code `9b46e84`; runs `results/run-2026-10-22-colab-t4-*`, probes and vLLM/Relay
-logs in `results/dev/`. All three valid: 0 errors, only `vllm-t4` served, host RAM never
+vLLM 0.31.0, code `9b46e84`; runs `run-2026-10-22-colab-t4-*` (the 7B run in `results/`; the
+two 1.5B runs, superseded by F11, moved to `results/dev/`), probes and vLLM/Relay logs in
+`results/dev/`. All three valid: 0 errors, only `vllm-t4` served, host RAM never
 under 7.98 GiB.*
 
 Per-rate numbers come from each run's `summary.json`. Light load (lowest rate) vs the highest
@@ -238,3 +239,33 @@ rate tested:
 
 Estimated cost (T4 at GBP 0.459/h, assumed list price, `bench/pricing.yaml`): 7B AWQ about
 GBP 1.41 per 1M output tokens at its limit; the 1.5B figures await the re-run.
+
+## F11. 1.5B re-run with the wider probe: real limits, and AWQ's lead shrinks under load
+*2026-10-24, same notebook on a free Colab Tesla T4, vLLM 0.31.0, code `0c4deb2` (`dirty:
+false`); runs `results/run-2026-10-24-colab-t4-1.5b-{fp16,awq}-*`, probes and logs in
+`results/dev/`. Both valid: 0 errors, only `vllm-t4` served, host RAM never under 7.97 GiB,
+scheduling lag p99 at most 14 ms (2 vCPUs kept up).*
+
+The probe now goes to 64 closed-loop workers. Throughput was still rising at 64 (AWQ 7.71 ->
+8.39 req/s from 32 to 64 workers, FP16 6.05 -> 7.38), but ITL p95 crossed 100 ms between 32
+and 64 workers for both, so this time the open-loop rates bracket the SLO limit:
+
+| Config | Last rate meeting the SLO | First rate missing it | Output tok/s at the limit | TPOT p50, lightest rate |
+|---|---|---|---|---|
+| 1.5B AWQ | 6.36 req/s (TTFT p95 260 ms, ITL p95 58 ms) | 8.18 req/s (ITL p95 119 ms) | 676 | 9.2 ms |
+| 1.5B FP16 | 5.14 req/s (TTFT p95 252 ms, ITL p95 76 ms) | 7.17 req/s (ITL p95 120 ms) | 537 | 18.0 ms |
+
+(The SLO limit lies between the two rates; achieved rates, from `summary.json`.)
+
+- **Reproducible:** where rates overlap, the 22 Oct and 24 Oct sessions (different Colab VMs)
+  agree: AWQ ITL p95 55 ms at 6.05 req/s vs 58 ms at 6.36; FP16 47 ms at 3.42 vs 48 ms at 3.79.
+- **AWQ's lead shrinks under load:** 2x faster per token alone (9.2 vs 18.0 ms), but only
+  1.24x more requests at the SLO limit (6.36 vs 5.14 req/s). A single stream is limited by
+  memory bandwidth (reading the weights, where 4-bit helps most); large batches make the GPU
+  compute-bound, where AWQ also pays to dequantise its weights.
+- **Goodput vs the SLO:** at 8.18 req/s AWQ's goodput was still 100% (each request met TTFT
+  <= 1 s and its own average TPOT <= 100 ms), yet the configuration misses the SLO because the
+  p95 of all inter-token gaps is 119 ms. The headline uses the brief's p95 SLO, the stricter test.
+- **Estimated cost** at the SLO limit (T4 at GBP 0.459/h, assumed list price): 1.5B AWQ
+  about GBP 0.19 and 1.5B FP16 about GBP 0.24 per 1M output tokens; 7B AWQ about GBP 1.41 (F10).
+- **Logs:** the same harmless FA2 notice and post-run shutdown `EngineDeadError` as F10.
