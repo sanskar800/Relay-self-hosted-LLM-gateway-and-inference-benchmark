@@ -269,3 +269,30 @@ and 64 workers for both, so this time the open-loop rates bracket the SLO limit:
 - **Estimated cost** at the SLO limit (T4 at GBP 0.459/h, assumed list price): 1.5B AWQ
   about GBP 0.19 and 1.5B FP16 about GBP 0.24 per 1M output tokens; 7B AWQ about GBP 1.41 (F10).
 - **Logs:** the same harmless FA2 notice and post-run shutdown `EngineDeadError` as F10.
+
+## F12. GSM8K: 7B is far more accurate; AWQ's cost on the 1.5B model is likely but unproven
+*2026-10-25, notebook section 4b on a free Colab Tesla T4, vLLM 0.31.0, code `25acfd2`
+(`dirty: false`); `results/quality/gsm8k-colab-t4-*`. The same 200 test questions (seed 42),
+zero-shot, temperature 0, at most 1024 tokens; 0 errors, 0 truncated, a number found in every
+answer, in all three runs.*
+
+| Config | Accuracy | 95% Wilson interval | Mean answer length |
+|---|---|---|---|
+| 1.5B FP16 | 72.0% (144/200) | 65.4-77.8% | 306 tokens |
+| 1.5B AWQ | 65.5% (131/200) | 58.7-71.7% | 288 tokens |
+| 7B AWQ | 95.0% (190/200) | 91.0-97.3% | 279 tokens |
+
+Paired comparison (`python -m bench.quality.compare <A> <B>`, exact McNemar test on the
+questions where the two disagree, because both answered the same questions):
+
+- **1.5B FP16 vs 1.5B AWQ:** both right 116, both wrong 41, only FP16 right 28, only AWQ right
+  15: **p = 0.066**. Suggestive of a real accuracy cost (about 6 points) for AWQ, but not
+  conclusive at 200 questions. Wording for the report: "a likely small accuracy cost,
+  not proven at this sample size".
+- **7B AWQ vs 1.5B AWQ:** only 7B right 62, only 1.5B right 3: **p < 0.0001**. Model size
+  matters far more than 4-bit quantisation.
+
+**Trade-off, with F10-F11:** on one T4, 1.5B AWQ serves 6.36 req/s within the SLO at about
+GBP 0.19 per 1M output tokens and 65.5% on GSM8K; 7B AWQ serves 0.84 req/s at about GBP 1.41
+(7x the cost) and 95.0%. Zero-shot scores compare these configurations with each other only;
+they are not comparable with published few-shot GSM8K scores.

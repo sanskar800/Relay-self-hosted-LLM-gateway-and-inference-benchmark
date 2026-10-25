@@ -1,0 +1,43 @@
+{
+  "summary": {
+    "questions": 200,
+    "correct": 131,
+    "accuracy": 0.655,
+    "ci95": [
+      0.5868,
+      0.7174
+    ],
+    "errors": 0,
+    "no_number_found": 0,
+    "truncated": 0
+  },
+  "scenario": "colab-t4-1.5b-awq",
+  "setup": {
+    "hardware": "NVIDIA Tesla T4 16 GB (Google Colab, free tier)",
+    "engine": "vLLM 0.31.0",
+    "model_file": "Qwen/Qwen2.5-1.5B-Instruct-AWQ@3ecffa0ceb27851800f45519bab9c457a04405e1",
+    "quantization": "AWQ 4-bit",
+    "server_args": "--dtype half --max-model-len 2048 --quantization awq",
+    "backend": "vllm-t4"
+  },
+  "model": "qwen2.5-1.5b-instruct",
+  "dataset": {
+    "repo": "openai/gsm8k",
+    "revision": "740312add88f781978c0658806c59bc2815b9866",
+    "file": "main/test-00000-of-00001.parquet",
+    "sha256": "ee7b8da9e381df27b9e3f7758a159ab2bdaa4dbaa910546cbbc47e0cb44e4f59"
+  },
+  "method": {
+    "subset_size": 200,
+    "subset_seed": 42,
+    "prompt": "Solve the following math problem step by step. At the end, write the final answer as 'The answer is N.' where N is a number.",
+    "temperature": 0.0,
+    "max_tokens": 1024,
+    "shots": 0
+  },
+  "git": {
+    "sha": "25acfd2a49944a5e378e444435c00bcf2f3883e1",
+    "dirty": false
+  },
+  "recorded_at": "2026-10-25T14:30:49.564670+00:00"
+}

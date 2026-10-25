@@ -76,3 +76,17 @@ def test_answers_are_scored_through_the_api() -> None:
     assert [r["correct"] for r in rows] == [True, False]
     s = summarise(rows)
     assert (s["questions"], s["correct"], s["accuracy"], s["errors"]) == (2, 1, 0.5, 0)
+
+
+def test_mcnemar_uses_only_the_disagreements() -> None:
+    from bench.quality.compare import mcnemar
+
+    # 10 questions: 6 both right, 1 both wrong, 3 only A right, 0 only B right.
+    a = {i: i < 9 for i in range(10)}
+    b = {i: i < 6 for i in range(10)}
+    r = mcnemar(a, b)
+    assert (r["both_right"], r["both_wrong"], r["only_a_right"], r["only_b_right"]) == (6, 1, 3, 0)
+    assert r["p_value"] == pytest.approx(0.25)  # 2 * (1/2)^3: three disagreements prove little
+    assert mcnemar(a, a)["p_value"] == 1.0
+    with pytest.raises(ValueError, match="different questions"):
+        mcnemar(a, {0: True})
