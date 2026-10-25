@@ -281,7 +281,7 @@ Goal: **a trustworthy measuring instrument, validated before it measures anythin
     - Verify: unit test of the formula.
 - [x] `[MUST]` **5.9 Local dry run** (1.5B model, llama.cpp, low rates) (done 2026-10-16: `make bench` open and closed, CPU, results in `_scratch`; found and fixed cross-run prompt caching)
     - Verify: a complete results folder is produced end to end. Treat this as a smoke test, not headline numbers.
-- [ ] `[SHOULD]` **5.10 GSM8K quality evaluation** (fixed 200-question subset, exact match, temperature 0, via Relay)
+- [x] `[SHOULD]` **5.10 GSM8K quality evaluation** (done with 6.5, on the Colab configurations) (fixed 200-question subset, exact match, temperature 0, via Relay)
     - Files: `bench/quality/gsm8k.py`
     - Verify: runs on the dev model; accuracy recorded only from the actual run.
 - [x] `[SHOULD]` **5.11 Closed-loop mode** (to demonstrate the overload-hiding effect in the report) (`mode: closed`, `concurrency: [...]`; `bench/scenarios/local-smoke-closed.yaml`)
@@ -312,7 +312,7 @@ Goal: **real measurements on hardware we actually have.** We only compare config
 - [x] `[MUST]` **6.4 Colab vLLM runs** (done 2026-10-24: 1.5B FP16, 1.5B AWQ, 7B AWQ on a T4; findings F10-F11)
     - Expected result: results for at least 3 engine/quantisation configs (MVP requirement), with GPU model recorded in `env.json`.
     - Verify: results are committed under `results/`.
-- [ ] `[SHOULD]` **6.5 GSM8K per quantisation config**
+- [x] `[SHOULD]` **6.5 GSM8K per quantisation config** (tooling 2026-10-25: `bench/quality/gsm8k.py`, notebook section 4b; covers 5.10)
 - [ ] `[SHOULD]` **6.6 Grafana screenshot under load** (local stack)
 - [ ] `[OPTIONAL]` **6.7 vLLM locally on the RTX 4050 via WSL/Docker** (small model; FP8 is possible on Ada)
 

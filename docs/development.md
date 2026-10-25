@@ -448,6 +448,21 @@ The script was dry-run on 2026-10-22 in a clean `python:3.12-slim` container wit
 `vllm` serving the fake engine (control flow, arguments, zip); the vLLM path itself is only
 exercised on Colab. Bring the final zip back and unzip it into the repository root.
 
+### GSM8K answer quality
+
+```bash
+uv run python -m bench.quality.gsm8k bench/scenarios/<config>.yaml [--limit 5]   # --limit: smoke test
+scripts/colab_run.sh <colab config> --quality                                  # in Colab (notebook 4b)
+```
+
+The same 200 GSM8K test questions for every configuration (fixed seed; dataset `openai/gsm8k`,
+MIT, pinned revision and SHA-256), zero-shot step by step, temperature 0, at most 1024 output
+tokens, scored by exact final number. `summary.json` gives accuracy with a 95% Wilson interval
+(about +-7 points at 200 questions: smaller differences are noise), errors, truncations and
+answers with no number; `answers.parquet` keeps every answer. Results go to `results/quality/`
+(`--limit` runs to `results/quality/_scratch/`). Zero-shot scores compare our configurations;
+they are not comparable with published few-shot GSM8K scores.
+
 ### Colab feasibility check (2026-10-10, de-risking only, no measurements)
 | Item | Found |
 |---|---|

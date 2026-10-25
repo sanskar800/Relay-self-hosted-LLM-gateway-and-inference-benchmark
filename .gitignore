@@ -28,6 +28,7 @@ models/
 results/_scratch/
 # Runs flagged invalid by the harness (wrong backend, host memory): kept for diagnosis only
 results/_invalid/
+results/quality/_scratch/
 *.tmp
 
 # Notebooks

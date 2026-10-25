@@ -10,7 +10,9 @@
 # notebook never edits code. Needs: `uv sync` done, `vllm` on PATH, an NVIDIA GPU.
 set -euo pipefail
 
-NAME="${1:?usage: scripts/colab_run.sh <scenario name>}"
+NAME="${1:?usage: scripts/colab_run.sh <scenario name> [--quality]}"
+# --quality: GSM8K accuracy (bench/quality/gsm8k.py) instead of the latency benchmark.
+MODE="${2:---bench}"
 SCENARIO="bench/scenarios/${NAME}.yaml"
 PY=".venv/bin/python"
 VLLM_PORT=8001
@@ -70,12 +72,17 @@ wait_for "http://127.0.0.1:${RELAY_PORT}/readyz" 60 "$RELAY_PID" "Relay"
 echo "   Relay ready (standalone)"
 
 status=0
-"$PY" -m bench.loadgen "$SCENARIO" --auto-rates || status=$?
+if [ "$MODE" = "--quality" ]; then
+  "$PY" -m bench.quality.gsm8k "$SCENARIO" || status=$?
+else
+  "$PY" -m bench.loadgen "$SCENARIO" --auto-rates || status=$?
+fi
 
 cleanup
 trap - EXIT
-ZIP="/content/relay-results-${NAME}-${STAMP}.zip"
-[ -d /content ] || ZIP="relay-results-${NAME}-${STAMP}.zip"
+KIND=""; [ "$MODE" = "--quality" ] && KIND="-gsm8k"
+ZIP="/content/relay-results-${NAME}${KIND}-${STAMP}.zip"
+[ -d /content ] || ZIP="relay-results-${NAME}${KIND}-${STAMP}.zip"
 "$PY" - "$ZIP" <<'EOF'
 import shutil, sys
 shutil.make_archive(sys.argv[1].removesuffix(".zip"), "zip", ".", "results")
