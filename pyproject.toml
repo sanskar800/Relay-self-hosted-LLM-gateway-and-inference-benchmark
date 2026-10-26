@@ -42,6 +42,11 @@ src = ["src", "tests", "bench"]
 # ASYNC async pitfalls (e.g. blocking calls inside async code), SIM simplifications
 select = ["E", "W", "F", "I", "B", "UP", "ASYNC", "SIM"]
 
+[tool.ruff.lint.per-file-ignores]
+# The report generator is mostly report prose in string literals; wrapping prose to an
+# exact width makes it harder to edit and review.
+"bench/analysis/analyze.py" = ["E501"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
@@ -56,6 +61,7 @@ markers = [
 bench = [
     "duckdb>=1.5.6",
     "huggingface-hub>=2.1.1",
+    "matplotlib>=3.11.2",
     "psutil>=7.2.2",
     "pyarrow>=26.0.0",
 ]

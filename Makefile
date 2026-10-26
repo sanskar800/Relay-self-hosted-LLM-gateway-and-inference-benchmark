@@ -3,7 +3,7 @@
 
 COMPOSE = docker compose -f deploy/compose/docker-compose.yml
 
-.PHONY: help setup test lint format models models-all up up-gpu up-all down ps logs run serve test-contract test-integration test-alerts db-shell redis-cli db-reset db-apply bench bench-overhead bench-stack-gpu bench-stack-cpu
+.PHONY: help setup test lint format models models-all up up-gpu up-all down ps logs run serve test-contract test-integration test-alerts db-shell redis-cli db-reset db-apply bench bench-overhead bench-stack-gpu bench-stack-cpu report
 
 help:  ## List targets
 	@uv run python -c "import re; [print(f\"{m[0]:<12} {m[1]}\") for m in re.findall(r\"^([a-z-]+):.*## (.*)$$\", open(\"Makefile\").read(), re.M)]"
@@ -29,6 +29,9 @@ bench:  ## Run a benchmark scenario (SCENARIO=..., ARGS=--scratch for a smoke ru
 
 bench-overhead:  ## Measure Relay's added latency against a fixed-latency fake engine (needs `make up`)
 	uv run python -m bench.overhead $(ARGS)
+
+report:  ## Regenerate docs/report.md, results/charts and per-run summaries from results/
+	uv run python -m bench.analysis.analyze
 
 # Lean stack for timed runs (docs/findings.md F8): only the engine under test plus what
 # Relay needs; the other engine and the observability services are stopped. Engine
