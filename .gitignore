@@ -42,3 +42,6 @@ Thumbs.db
 
 # Internal build plan and progress log (kept locally, not published)
 TASKS.md
+
+# CI test reports (JUnit XML)
+reports/

@@ -33,7 +33,10 @@ jobs:
       - name: Format
         run: uv run ruff format --check .
       - name: Unit tests
-        run: uv run pytest -m "not contract and not integration"
+        run: uv run pytest -m "not contract and not integration" -rf --junitxml=reports/unit.xml
+      - name: Annotate failed tests
+        if: failure()
+        run: python3 scripts/junit_annotations.py reports/*.xml || true
 
   stack:
     name: Integration, contract and alert tests
@@ -81,12 +84,17 @@ jobs:
           cat relay.log; exit 1
 
       - name: Integration tests
-        run: uv run pytest -m integration
+        run: uv run pytest -m integration -rf --junitxml=reports/integration.xml
       - name: Contract tests (official OpenAI SDK against Relay)
-        run: uv run pytest -m contract
+        run: uv run pytest -m contract -rf --junitxml=reports/contract.xml
       - name: Alert rules (promtool)
         run: make test-alerts
 
+      # Failed tests become annotations on the public run page, so the cause is visible
+      # without opening the job log (which needs a GitHub login).
+      - name: Annotate failed tests
+        if: failure()
+        run: python3 scripts/junit_annotations.py reports/*.xml || true
       - name: Logs on failure
         if: failure()
         run: |

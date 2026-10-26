@@ -2,7 +2,7 @@
 
 **A self-hosted, OpenAI-compatible LLM gateway, and a benchmark that measures which serving setup meets a latency target at the lowest cost.**
 
-[![CI](https://github.com/sanskar800/Relay-self-hosted-LLM-gateway-and-inference-benchmark/actions/workflows/ci.yml/badge.svg)](https://github.com/sanskar800/Relay-self-hosted-LLM-gateway-and-inference-benchmark/actions/workflows/ci.yml)
+[![CI](https://github.com/sanskar800/relay-llm-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/sanskar800/relay-llm-gateway/actions/workflows/ci.yml)
 
 Relay sits between applications and self-hosted open-weight models (llama.cpp, vLLM). It speaks the standard OpenAI `/v1/chat/completions` API, so any OpenAI SDK client works unchanged, and adds what an organisation needs to share a model fleet: API keys per team, model policies, rate limits, a usage and cost ledger, and the reliability and observability to run it.
 
@@ -91,7 +91,7 @@ The design and the reason for each component are in [docs/architecture.md](docs/
 **Prerequisites:** Docker Desktop, [uv](https://docs.astral.sh/uv/), GNU Make and about 2 GB of disk for models. Ports 8000 (Relay), 8081 (llama.cpp), 5433 (Postgres) and 6379 (Redis) must be free. No GPU needed.
 
 ```bash
-git clone https://github.com/sanskar800/Relay-self-hosted-LLM-gateway-and-inference-benchmark.git relay
+git clone https://github.com/sanskar800/relay-llm-gateway.git relay
 cd relay
 cp .env.example .env   # local settings (git-ignored)
 make setup     # Python 3.12 venv with the exact dependencies from uv.lock
@@ -139,7 +139,7 @@ The full setup guide, including Windows notes, is [docs/development.md](docs/dev
 
 ## Reproducing the benchmark
 
-- **GPU runs:** open [`bench/colab/relay_benchmark.ipynb`](https://colab.research.google.com/github/sanskar800/Relay-self-hosted-LLM-gateway-and-inference-benchmark/blob/main/bench/colab/relay_benchmark.ipynb) in Colab with a T4 runtime and run it. It installs everything, starts vLLM and Relay, finds each configuration's saturation point, runs the load test and the GSM8K evaluation, and zips the results. No code is edited in Colab.
+- **GPU runs:** open [`bench/colab/relay_benchmark.ipynb`](https://colab.research.google.com/github/sanskar800/relay-llm-gateway/blob/main/bench/colab/relay_benchmark.ipynb) in Colab with a T4 runtime and run it. It installs everything, starts vLLM and Relay, finds each configuration's saturation point, runs the load test and the GSM8K evaluation, and zips the results. No code is edited in Colab.
 - **Report:** put the results under `results/` and run `make report`.
 - **Local load tests:** `make bench SCENARIO=bench/scenarios/<name>.yaml`; Relay's own overhead: `make bench-overhead`.
 

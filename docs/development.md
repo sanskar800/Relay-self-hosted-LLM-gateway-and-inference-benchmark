@@ -29,7 +29,7 @@ A living setup guide. Each external requirement lists **what it is, why we need 
 
 ## 1. Repository location
 
-**Decision (2026-10-08):** the project lives at **`C:\dev\5projects\relay`**, outside OneDrive. GitHub is the backup: https://github.com/sanskar800/Relay-self-hosted-LLM-gateway-and-inference-benchmark
+**Decision (2026-10-08):** the project lives at **`C:\dev\5projects\relay`**, outside OneDrive. GitHub is the backup: https://github.com/sanskar800/relay-llm-gateway
 
 Why not OneDrive:
 
@@ -427,7 +427,7 @@ docker run --rm --privileged alpine sh -c "sync; echo 3 > /proc/sys/vm/drop_cach
 
 ### Colab benchmark (vLLM on the T4)
 
-[Open `bench/colab/relay_benchmark.ipynb` in Colab](https://colab.research.google.com/github/sanskar800/Relay-self-hosted-LLM-gateway-and-inference-benchmark/blob/main/bench/colab/relay_benchmark.ipynb),
+[Open `bench/colab/relay_benchmark.ipynb` in Colab](https://colab.research.google.com/github/sanskar800/relay-llm-gateway/blob/main/bench/colab/relay_benchmark.ipynb),
 keep the preselected T4 runtime, `Runtime > Run all` (about 60-75 min). No code is edited in
 Colab: each configuration cell runs `scripts/colab_run.sh <scenario>`, which reads everything
 from `bench/scenarios/colab-t4-*.yaml` and:
