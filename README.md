@@ -36,6 +36,12 @@ Full report, with every load level, method and limitations: **[docs/report.md](d
 - **Model size matters far more than quantisation.** The 7B model answers far more maths questions correctly, at several times the cost per token. Quantising the 1.5B model costs a little accuracy, but the difference is not statistically significant on 200 questions.
 - **Past saturation, latency explodes.** An open-loop load test keeps sending at the offered rate and shows the queue growing; a closed loop would have hidden it.
 
+## The Grafana dashboard
+
+![Relay's Grafana dashboard during a short demo load](docs/img/grafana.png)
+
+*The provisioned dashboard during a few minutes of demo traffic against llama.cpp on the development laptop's CPU (not a benchmark: the gateway and the engine shared one busy CPU). As load passes what the CPU can serve, requests queue and time to first token crosses its 1 s SLO line while errors stay at zero. The panels track the brief's SLOs: TTFT and inter-token latency p95, the 5xx error ratio, gateway overhead, tokens per tenant and rate-limited requests.*
+
 ## How the numbers were made trustworthy
 
 Getting a benchmark right took more work than running it. Each of these was found during the build, fixed, and is recorded in [docs/findings.md](docs/findings.md):
