@@ -55,8 +55,8 @@ sweep and prefix caching on/off are SHOULD items, done only if time allows.
 **Engine settings (all llama.cpp configurations):** `--parallel 4 --ctx-size 4096` (4 slots
 of 1024 tokens; the workload's largest request is about 900) and `--cache-ram 0` (the
 host-RAM prompt cache cannot hit salted prompts and filled the laptop's RAM: findings F9).
-Set by `make bench-stack-gpu` / `make bench-stack-cpu`, which also stop every service the
-run does not need (F8).
+Set by `make bench-stack-gpu` / `make bench-stack-cpu` (removed with the local matrix, see
+the amendment), which also stopped every service the run did not need (F8).
 
 **Method (all configurations):**
 - Open-loop Poisson load through Relay, as clients would use it (Relay adds about 4 ms
@@ -99,5 +99,6 @@ dedicated machine and a GPU with a public price, so it also carries the cost est
   still covered on vLLM (FP16 vs AWQ, 1.5B vs 7B).
 - llama.cpp remains Relay's development and CI backend; the engineering findings from the
   local attempts (F7-F9: the keep-alive fix, the memory guard, `--cache-ram 0`) stand.
-- The local scenarios, `config/bench/local-*.yaml` and `make bench-stack-*` stay in the repo,
-  unrun, so the local matrix can be measured later on a dedicated machine.
+- The unrun local scenarios, `config/bench/local-*.yaml`, `make bench-stack-*` and the
+  benchmark-only GGUF pins were removed on 2026-10-26 to keep the repository focused; git
+  history keeps them if the local matrix is ever measured on a dedicated machine.

@@ -73,7 +73,7 @@ Models are stored **outside** the repository as well (see §5).
 ### make
 - **What/why:** short, memorable commands (`make up`, `make test`, `make bench`) that work the same on Linux, macOS, WSL, CI and Colab. All five portfolio repos will share this convention.
 - **Check:** `make --version` → GNU Make 4.4.1 ✅ (installed 2026-10-08).
-- **Targets:** `make help` lists them (`setup`, `test`, `lint`, `format`, `models`, `models-all`; more are added as the stack grows).
+- **Targets:** `make help` lists them (`setup`, `test`, `lint`, `format`, `models`; more are added as the stack grows).
 - **Install (Windows):** `winget install ezwinports.make`, then open a **new** terminal so PATH refreshes.
 - **Verify:** `make --version`.
 - **Alternative:** run the same targets from WSL Ubuntu (`sudo apt install make`).
@@ -119,9 +119,8 @@ uv run ruff format .       # format (CI runs `ruff format --check .`)
 |---|---|---|---|---|
 | CI / tests | `Qwen/Qwen2.5-0.5B-Instruct-GGUF` @ `9217f5d` | `qwen2.5-0.5b-instruct-q4_k_m.gguf` | 0.49 GB | `make models` |
 | Development | `Qwen/Qwen2.5-1.5B-Instruct-GGUF` @ `91cad51` | `qwen2.5-1.5b-instruct-q4_k_m.gguf` | 1.12 GB | `make models` |
-| Benchmark (Q8 vs Q4) | `Qwen/Qwen2.5-1.5B-Instruct-GGUF` @ `91cad51` | `qwen2.5-1.5b-instruct-q8_0.gguf` | 1.89 GB | `make models-all` |
 
-- **Licence:** Apache-2.0 for all three (model card metadata, checked 2026-10-08).
+- **Licence:** Apache-2.0 for both (model card metadata, checked 2026-10-08).
 - **Verified 2026-10-08:** CI + dev models downloaded in ~2.5 min; SHA-256 matched; re-run skipped the download.
 
 ## 6. Local stack
@@ -407,21 +406,19 @@ larger than the overhead.
 test batch on 2026-10-14 failed while Windows entered Modern Standby (lid closed): one run
 took 22 minutes and requests stalled. Smoke results like those are discarded, not reported.
 
-**Local benchmark procedure** (ADR-001; findings F7-F9 explain each step):
+**Local load tests** (benchmarks themselves run on Colab: ADR-001 amendment). The local
+benchmark matrix, its scenarios and its lean-stack targets were removed on 2026-10-26 (git
+history has them). On this laptop, before a timed run, hand the Docker VM's page cache back
+to Windows (~30 s) so the memory guard below has room (findings F8, F9):
 
 ```bash
-make bench-stack-gpu        # or bench-stack-cpu: engine under test + Postgres + Redis only
 docker run --rm --privileged alpine sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"
-                            # hand the Docker VM's page cache back to Windows (~30 s)
-RELAY_CONFIG=config/bench/local-gpu.yaml make run          # second terminal
-make bench SCENARIO=bench/scenarios/<config>.yaml ARGS=--probe   # once: choose rates
-make bench SCENARIO=bench/scenarios/<config>.yaml          # from a committed, clean tree
 ```
 
-- **Benchmark tenant:** scenarios use `RELAY_BENCH_API_KEY` (tenant `bench`, created with
-  `relay-admin create-tenant bench --models qwen2.5-1.5b-instruct qwen2.5-7b-instruct --rpm
-  100000 --tpm 100000000`, then `relay-admin create-key bench`), so rate limits never
-  throttle a run and benchmark traffic is kept apart in the ledger.
+- **Benchmark tenant:** Colab scenarios use `RELAY_BENCH_API_KEY`, which
+  `scripts/colab_run.sh` sets for Relay's standalone mode. Locally, create it with
+  `relay-admin create-tenant bench --models qwen2.5-1.5b-instruct --rpm 100000 --tpm
+  100000000` and `relay-admin create-key bench`, so rate limits never throttle a run.
 - **Memory guard:** the harness refuses to start with under 2 GiB RAM available, samples
   it during the run (`host_memory` in `env.json`) and marks the run INVALID if it fell
   under 1 GiB. Close what you can (a browser) before long runs.

@@ -187,8 +187,8 @@ Benchmark prompts are salted (F1), so the cache can never hit: it only costs mem
 `--cache-ram 0` the same probe kept at least **2.39 GiB available** and the container used
 378 MiB (`...-probe-132836`). Results otherwise matched: 0 errors, peak 2.59 req/s.
 
-**Decision:** benchmark runs use `--cache-ram 0` (`make bench-stack-*`, recorded in each
-scenario's `server_args`); development keeps the engine default (`LLAMACPP_CACHE_RAM`).
+**Decision:** benchmark runs use `--cache-ram 0` (then set by `make bench-stack-*`, since removed
+with the local matrix, and recorded in each scenario's `server_args`); development keeps the engine default (`LLAMACPP_CACHE_RAM`).
 For multi-turn chat in production the cache is valuable, but it needs a RAM budget.
 
 **Also:** WSL2 is slow to return freed memory to Windows. Dropping the VM's page cache

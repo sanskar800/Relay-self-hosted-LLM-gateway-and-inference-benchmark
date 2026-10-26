@@ -1,6 +1,7 @@
 # Relay config for benchmark runs on Colab (ADR-001): vLLM on the T4, port 8001 (8000 is
 # Relay's). Relay runs standalone there (RELAY_STANDALONE=1: no Postgres or Redis).
-# Same rules as local-gpu.yaml: one backend per model, no fallback, no retries.
+# One backend per model, no fallback, no retries: a failing backend must show up as
+# errors, and a retry would add load the benchmark did not offer.
 
 backends:
   vllm-t4:
