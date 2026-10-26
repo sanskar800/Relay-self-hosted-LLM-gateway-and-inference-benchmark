@@ -21,6 +21,8 @@ pytestmark = pytest.mark.integration
 PORT = 8017
 BASE = f"http://127.0.0.1:{PORT}"
 API_KEY = os.environ.get("RELAY_TEST_API_KEY") or dotenv_values(".env").get("RELAY_TEST_API_KEY")
+# The served model: CI runs the 0.5B model (RELAY_TEST_MODEL), development the 1.5B.
+MODEL = os.environ.get("RELAY_TEST_MODEL", "qwen2.5-1.5b-instruct")
 
 
 def unavailable(message: str) -> None:
@@ -68,7 +70,7 @@ def test_signal_drains_in_flight_stream_then_exits(tmp_path) -> None:
 
         headers = {"Authorization": f"Bearer {API_KEY}"}
         body = {
-            "model": "qwen2.5-1.5b-instruct",
+            "model": MODEL,
             "messages": [{"role": "user", "content": "Write a long story about the sea."}],
             "max_tokens": 120,
             "stream": True,

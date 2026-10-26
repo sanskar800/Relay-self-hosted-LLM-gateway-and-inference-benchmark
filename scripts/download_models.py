@@ -9,6 +9,7 @@ SHA-256, so a benchmark result always traces back to the exact bytes that produc
 Usage:
     uv run python scripts/download_models.py          # ci + dev models
     uv run python scripts/download_models.py --all    # also the benchmark-only models
+    uv run python scripts/download_models.py --ci     # only the 0.5B CI model
 """
 
 from __future__ import annotations
@@ -121,10 +122,12 @@ def ensure(model: PinnedModel, target_dir: Path) -> Path:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--all", action="store_true", help="also download benchmark-only models")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--all", action="store_true", help="also download benchmark-only models")
+    group.add_argument("--ci", action="store_true", help="only the small CI model")
     args = parser.parse_args(argv)
 
-    purposes = {"ci", "dev", "bench"} if args.all else {"ci", "dev"}
+    purposes = {"ci", "dev", "bench"} if args.all else {"ci"} if args.ci else {"ci", "dev"}
     target_dir = models_dir()
     target_dir.mkdir(parents=True, exist_ok=True)
     print(f"Models directory: {target_dir}")

@@ -1,0 +1,94 @@
+# CI: lint + unit tests on every push; then the full stack (Postgres, Redis, llama.cpp with
+# the 0.5B GGUF model on CPU) for integration, OpenAI-SDK contract and alert-rule tests.
+# No GPU and no paid services: the benchmark itself runs on Colab (ADR-001).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint and unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.9.9"
+          enable-cache: true
+      - name: Install (Python 3.12 and exact versions from uv.lock)
+        run: uv sync --frozen
+      - name: Lint
+        run: uv run ruff check .
+      - name: Format
+        run: uv run ruff format --check .
+      - name: Unit tests
+        run: uv run pytest -m "not contract and not integration"
+
+  stack:
+    name: Integration, contract and alert tests
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      RELAY_MODELS_DIR: /home/runner/models
+      LLAMACPP_MODEL: qwen2.5-0.5b-instruct-q4_k_m.gguf
+      LLAMACPP_ALIAS: qwen2.5-0.5b-instruct
+      RELAY_CONFIG: config/relay.ci.yaml
+      RELAY_TEST_MODEL: qwen2.5-0.5b-instruct
+      RELAY_TEST_BASE_URL: http://127.0.0.1:8000/v1
+      RELAY_REQUIRE_STACK: "1"  # a missing stack fails the tests instead of skipping them
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.9.9"
+          enable-cache: true
+      - run: uv sync --frozen
+
+      - name: Cache the CI model (pinned by revision and SHA-256 in the script)
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/models
+          key: models-ci-${{ hashFiles('scripts/download_models.py') }}
+      - name: Download the CI model (verifies SHA-256, also when cached)
+        run: uv run python scripts/download_models.py --ci
+
+      - name: Start Postgres, Redis and llama.cpp
+        run: docker compose -f deploy/compose/docker-compose.yml up -d --wait postgres redis llamacpp
+
+      - name: Create a CI tenant and API key
+        run: |
+          uv run relay-admin create-tenant ci --name "CI" --models qwen2.5-0.5b-instruct --rpm 600 --tpm 500000
+          key=$(uv run relay-admin create-key ci --name ci | tail -1)
+          echo "::add-mask::$key"
+          echo "RELAY_TEST_API_KEY=$key" >> "$GITHUB_ENV"
+
+      - name: Start Relay
+        run: |
+          nohup uv run python -m relay.serve > relay.log 2>&1 &
+          for _ in $(seq 1 60); do curl -sf http://127.0.0.1:8000/readyz && exit 0; sleep 1; done
+          cat relay.log; exit 1
+
+      - name: Integration tests
+        run: uv run pytest -m integration
+      - name: Contract tests (official OpenAI SDK against Relay)
+        run: uv run pytest -m contract
+      - name: Alert rules (promtool)
+        run: make test-alerts
+
+      - name: Logs on failure
+        if: failure()
+        run: |
+          cat relay.log || true
+          docker compose -f deploy/compose/docker-compose.yml logs --tail 100

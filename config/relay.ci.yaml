@@ -1,0 +1,11 @@
+# Relay config for CI (.github/workflows/ci.yml): the small 0.5B GGUF model on llama.cpp
+# (CPU), served under its own name. Same defaults otherwise (retries, breaker, limits).
+
+backends:
+  llamacpp-cpu:
+    engine: llamacpp
+    url: http://127.0.0.1:8081
+
+models:
+  qwen2.5-0.5b-instruct:
+    backends: [llamacpp-cpu]

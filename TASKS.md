@@ -331,7 +331,7 @@ Goal: **real measurements on hardware we actually have.** We only compare config
 - [x] `[MUST]` **7.3 Generated report** (`make report`; regenerates byte for byte, tested)
     - Expected result: per-run `summary.md` and `docs/report.md` generated from results, covering methodology, hardware, limitations and the max load meeting the SLO per config.
     - Verify: deleting and regenerating reproduces the same report.
-- [ ] `[MUST]` **7.4 CI (GitHub Actions)**
+- [x] `[MUST]` **7.4 CI (GitHub Actions)** (`checks` + `stack` jobs; 0.5B model cached; rehearsed locally)
     - Expected result: lint + unit + contract; integration job with the 0.5B GGUF model in Compose (model cached).
     - Files: `.github/workflows/ci.yml`
     - Verify: green badge on GitHub.
