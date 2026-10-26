@@ -171,4 +171,3 @@ docs/             report, findings, architecture, development guide, ADRs
 - [docs/adr/](docs/adr/): architecture decision records
 - [docs/brief.md](docs/brief.md): requirements brief (tenants, quotas, SLO targets)
 - [docs/development.md](docs/development.md): setup, running, testing and benchmarking
-- [TASKS.md](TASKS.md): the build plan and progress log

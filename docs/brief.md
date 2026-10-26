@@ -1,6 +1,6 @@
 # Relay: requirements brief
 
-*One page. Every feature in [TASKS.md](../TASKS.md) should trace back to a line here. Written 2026-10-08.*
+*One page. Every feature of Relay should trace back to a line here. Written 2026-10-08.*
 
 ## Problem
 

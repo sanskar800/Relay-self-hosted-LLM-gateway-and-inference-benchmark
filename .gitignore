@@ -39,3 +39,6 @@ results/quality/_scratch/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Internal build plan and progress log (kept locally, not published)
+TASKS.md
