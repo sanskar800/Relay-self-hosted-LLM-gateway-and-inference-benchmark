@@ -94,7 +94,7 @@ Paired comparison on the same questions (exact McNemar test):
 
 ## Method
 
-- **Path:** client -> Relay (standalone: one key, in-memory limits) -> vLLM on the same VM. Relay's own added latency was measured separately (about 4 ms at p50 before the first token on the dev laptop; `docs/findings.md` F2).
+- **Path:** client -> Relay (standalone: one key, in-memory limits) -> vLLM on the same VM. Relay's own added latency was measured separately: 3.7-4.1 ms at p50 and at most 9.3 ms at p95 before the first token (2 runs on the dev laptop against a fixed-latency fake engine; findings F2).
 - **Load:** open loop, Poisson arrivals at 5 rates from 0.25x to 1.25x of a closed-loop probe's peak (probe range listed per configuration), 120 s per rate after a 20 s warm-up that is excluded.
 - **Workload:** identical for every configuration: prompt lengths log-normal (median 200 tokens, 16-600), output lengths log-normal (median 96, 16-256) with `ignore_eos`, seed 42; prompt openings salted per run and level so no prompt is ever resent (prefix caching would flatter TTFT; findings F1).
 - **Metrics:** TTFT = first content token - send; ITL = gap between token arrivals; TPOT = (end - first token) / (tokens - 1); percentiles by linear interpolation; rates over the window from the end of warm-up to the last response.

@@ -1,6 +1,6 @@
 # ADR-003: Retry only before the first token
 
-- **Status:** Accepted
+- **Status:** Accepted (follow-up 2026-10-16, see the end)
 - **Date:** 2026-10-13
 
 ## Context
@@ -34,3 +34,21 @@ Retries also cost something. A backend that is slow because it is overloaded get
 - Waiting for the first event before committing the response adds no latency: the client could not receive anything earlier anyway.
 - **Retries cost time against a backend that is really down:** each attempt waits for the connection to fail. Observed on Windows (2026-10-13): a refused connection to a stopped container takes about 2 s, so 3 attempts took about 6.3 s before the 502. Routing should stop sending requests to a backend that keeps failing (a circuit breaker), so that only brief failures pay this cost.
 - Client retries (the OpenAI SDK retries 5xx twice) still multiply with these. Keeping the gateway's attempts few and jittered limits the effect; clients that need tight latency can set `max_retries=0`.
+
+## Follow-up (2026-10-16): retries can hide a fault
+
+The first point under Consequences cut both ways. During the Day 6 benchmark, with retries
+turned off, 16-30% of requests to llama.cpp failed with "Server disconnected without
+sending a response": llama.cpp's server sometimes closes a kept-alive connection after a
+streamed response without telling the client (`docs/findings.md` F7). Under this policy
+those failures had been retried silently, each costing extra time to first token, with
+nothing reporting them as errors.
+
+This decision stands; two changes followed from it:
+
+- **The fault was fixed at its source,** not left to retries: Relay opens a new connection
+  per request to llama.cpp backends (`keep_alive`, engine default off for llama.cpp).
+- **Benchmarks run with retries off** (`config/bench/*.yaml`, `max_attempts: 1`), so a
+  failing backend shows up as errors and a retry never adds load the benchmark did not
+  offer. A retry counter in the metrics would make such hidden failures visible in
+  production too; not yet built.

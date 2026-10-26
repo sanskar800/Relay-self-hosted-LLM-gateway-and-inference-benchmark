@@ -49,7 +49,7 @@ def test_slo_limit_brackets_the_capacity() -> None:
 
 def test_report_regenerates_byte_for_byte() -> None:
     def digest() -> dict[str, str]:
-        files = [analyze.REPORT, *sorted(analyze.CHARTS.glob("*.png"))]
+        files = [analyze.REPORT, analyze.README, *sorted(analyze.CHARTS.glob("*.png"))]
         files += [r / "summary.md" for r in RUNS]
         return {str(f): hashlib.sha256(f.read_bytes()).hexdigest() for f in files}
 
@@ -57,3 +57,20 @@ def test_report_regenerates_byte_for_byte() -> None:
     first = digest()
     analyze.generate()
     assert digest() == first
+
+
+def test_readme_block_is_replaced_and_the_rest_kept(tmp_path, monkeypatch) -> None:
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        f"# Intro\n\n{analyze.README_START}\nold numbers\n{analyze.README_END}\n\n## Outro\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(analyze, "README", readme)
+    monkeypatch.setattr(analyze, "readme_results", lambda headline: "new table")
+    analyze.update_readme([])
+    text = readme.read_text(encoding="utf-8")
+    assert "old numbers" not in text and "new table" in text
+    assert text.startswith("# Intro") and text.endswith("## Outro\n")
+    readme.write_text("no markers", encoding="utf-8")
+    with pytest.raises(SystemExit, match="markers"):
+        analyze.update_readme([])

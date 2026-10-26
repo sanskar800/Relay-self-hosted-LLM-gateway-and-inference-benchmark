@@ -338,7 +338,7 @@ Goal: **real measurements on hardware we actually have.** We only compare config
 - [ ] `[MUST]` **7.5 Final README**
     - Expected result: architecture diagram, generated results table, quick start verified from a clean clone, the "in production I'd use LiteLLM" note, limitations (free GPU class, assumed prices).
     - Verify: a fresh clone runs in under 10 minutes following the README.
-- [ ] `[MUST]` **7.6 ADRs 001–003 finalised and indexed**
+- [x] `[MUST]` **7.6 ADRs 001–003 finalised and indexed** (ADR-001 amendment, ADR-003 follow-up on F7)
 - [ ] `[SHOULD]` **7.7 3-minute demo video** (load test with the dashboard moving and a backend killed)
 - [ ] `[SHOULD]` **7.8 CV bullets and interview notes** filled with real numbers only
     - Files: `docs/interview-notes.md`
